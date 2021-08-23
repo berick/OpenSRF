@@ -2,10 +2,14 @@ package OpenSRF::Transport::Redis::Client;
 use strict;
 use warnings;
 use Redis;
+use JSON::SL;
 use Time::HiRes q/time/;
 use Digest::MD5 qw(md5_hex);
 use OpenSRF::Utils::Config;
 use OpenSRF::Utils::Logger qw/$logger/;
+
+
+my $json_stream = JSON::SL->new;
 
 sub new {
     my ($class, %params) = @_;
@@ -116,6 +120,46 @@ sub process {
     }
 
     return $self->recv($timeout);
+}
+
+# $timeout=0 means check for data without blocking
+# $timeout=-1 means block indefinitely.
+sub recv {
+    my ($self, $timeout) = @_;
+
+    my $to = $self->bus_id;
+
+    $json_stream->reset;
+
+    my $resp;
+    do {
+        my $packet;
+
+        if ($timeout == 0) {
+            # Non-blocking list pop
+            $packet = $self->redis->lpop($to);
+        } else {
+            # In Redis, timeout 0 means wait indefinitely
+            $packet = $self->redis->blpop($to, $timeout == -1 ? 0 : $timeout);
+        }
+
+        # Timed out waiting for data.
+        return undef unless $packet;
+
+        my $text = $packet->[1]; # [sender, text]
+
+        eval { $json_stream->feed($text) };
+        if ($@) {
+            $logger->error("recv() got invalid JSON: $text");
+            return undef;
+        }
+
+        $logger->debug("recv() $text");
+
+    # ->fetch returns a JSON object as soon as a whole object is parsed.
+    } while (!($resp = $self->stream->fetch));
+
+    return RediSRF::Message->new($resp);
 }
 
 
