@@ -45,16 +45,16 @@ level transport
 =cut
 
 sub message_envelope {
-	my( $class, $envelope ) = @_;
-	if( $envelope ) {
-		$message_envelope = $envelope;
-		$envelope->use;
-		if( $@ ) {
-			$logger->error( 
-					"Error loading message_envelope: $envelope -> $@", ERROR);
-		}
-	}
-	return $message_envelope;
+    my( $class, $envelope ) = @_;
+    if( $envelope ) {
+        $message_envelope = $envelope;
+        $envelope->use;
+        if( $@ ) {
+            $logger->error( 
+                    "Error loading message_envelope: $envelope -> $@", ERROR);
+        }
+    }
+    return $message_envelope;
 }
 
 =head2 handler( $data )
@@ -67,121 +67,126 @@ the handler method on the message document.
 =cut
 
 sub handler {
-	my $start_time = time();
-	my( $class, $service, $data ) = @_;
+    my $start_time = time();
+    my( $class, $service, $data ) = @_;
 
-	$logger->transport( "Transport handler() received $data", INTERNAL );
+    $logger->transport( "Transport handler() received $data", INTERNAL );
 
-	my $remote_id	= $data->from;
-	my $sess_id	= $data->thread;
-	my $body	= $data->body;
-	my $type	= $data->type;
+    my $remote_id    = $data->from;
+    my $sess_id    = $data->thread;
+    my $body    = $data->body;
+    my $type    = $data->type;
 
-	$logger->set_osrf_xid($data->osrf_xid);
+    $logger->set_osrf_xid($data->osrf_xid);
 
 
-	if (defined($type) and $type eq 'error') {
-		throw OpenSRF::EX::Session ("$remote_id IS NOT CONNECTED TO THE NETWORK!!!");
+    if (defined($type) and $type eq 'error') {
+        throw OpenSRF::EX::Session ("$remote_id IS NOT CONNECTED TO THE NETWORK!!!");
 
-	}
+    }
 
-	# See if the app_session already exists.  If so, make 
-	# sure the sender hasn't changed if we're a server
-	my $app_session = OpenSRF::AppSession->find( $sess_id );
-	if( $app_session and $app_session->endpoint == $app_session->SERVER() and
-			$app_session->remote_id ne $remote_id ) {
+    # See if the app_session already exists.  If so, make 
+    # sure the sender hasn't changed if we're a server
+    my $app_session = OpenSRF::AppSession->find( $sess_id );
+    if( $app_session and $app_session->endpoint == $app_session->SERVER() and
+            $app_session->remote_id ne $remote_id ) {
 
-	    my $c = OpenSRF::Utils::SettingsClient->new();
+        my $c = OpenSRF::Utils::SettingsClient->new();
         if($c->config_value("apps", $app_session->service, "migratable")) {
             $logger->debug("service is migratable, new client is $remote_id");
         } else {
 
-		    $logger->warn("Backend Gone or invalid sender");
-		    my $res = OpenSRF::DomainObject::oilsBrokenSession->new();
-		    $res->status( "Backend Gone or invalid sender, Reconnect" );
-		    $app_session->status( $res );
-		    return 1;
+            $logger->warn("Backend Gone or invalid sender");
+            my $res = OpenSRF::DomainObject::oilsBrokenSession->new();
+            $res->status( "Backend Gone or invalid sender, Reconnect" );
+            $app_session->status( $res );
+            return 1;
         }
-	} 
+    } 
 
-	# Retrieve or build the app_session as appropriate (server_build decides which to do)
-	$logger->transport( "AppSession is valid or does not exist yet", INTERNAL );
-	$app_session = OpenSRF::AppSession->server_build( $sess_id, $remote_id, $service );
+    # Retrieve or build the app_session as appropriate (server_build decides which to do)
+    $logger->transport( "AppSession is valid or does not exist yet", INTERNAL );
+    $app_session = OpenSRF::AppSession->server_build( $sess_id, $remote_id, $service );
 
-	if( ! $app_session ) {
-		throw OpenSRF::EX::Session ("Transport::handler(): No AppSession object returned from server_build()");
-	}
+    if( ! $app_session ) {
+        throw OpenSRF::EX::Session ("Transport::handler(): No AppSession object returned from server_build()");
+    }
 
-	# Create a document from the JSON contained within the message 
-	my $doc; 
-	eval { $doc = OpenSRF::Utils::JSON->JSON2perl($body); };
-	if( $@ ) {
+=head NOT NEEDED
 
-		$logger->warn("Received bogus JSON: $@");
-		$logger->warn("Bogus JSON data: $body");
-		my $res = OpenSRF::DomainObject::oilsXMLParseError->new( status => "JSON Parse Error --- $body\n\n$@" );
+    # Create a document from the JSON contained within the message 
+    my $doc; 
+    eval { $doc = OpenSRF::Utils::JSON->JSON2perl($body); };
+    if( $@ ) {
 
-		$app_session->status($res);
-		#$app_session->kill_me;
-		return 1;
-	}
+        $logger->warn("Received bogus JSON: $@");
+        $logger->warn("Bogus JSON data: $body");
+        my $res = OpenSRF::DomainObject::oilsXMLParseError->new( status => "JSON Parse Error --- $body\n\n$@" );
 
-	$logger->transport( "Transport::handler() creating \n$body", INTERNAL );
+        $app_session->status($res);
+        #$app_session->kill_me;
+        return 1;
+    }
 
-	# We need to disconnect the session if we got a jabber error on the client side.  For
-	# server side, we'll just tear down the session and go away.
-	if (defined($type) and $type eq 'error') {
-		# If we're a server
-		if( $app_session->endpoint == $app_session->SERVER() ) {
-			$app_session->kill_me;
-			return 1;
-		} else {
-			$app_session->reset;
-			$app_session->state( $app_session->DISCONNECTED );
-			# below will lead to infinite looping, should return an exception
-			#$app_session->push_resend( $app_session->app_request( 
-			#		$doc->documentElement->firstChild->threadTrace ) );
-			$logger->debug(
-				"Got Jabber error on client connection $remote_id, nothing we can do..", ERROR );
-			return 1;
-		}
-	}
+    $logger->transport( "Transport::handler() creating \n$body", INTERNAL );
 
-	# cycle through and pass each oilsMessage contained in the message
-	# up to the message layer for processing.
-	for my $msg (@$doc) {
+    # We need to disconnect the session if we got a jabber error on the client side.  For
+    # server side, we'll just tear down the session and go away.
+    if (defined($type) and $type eq 'error') {
+        # If we're a server
+        if( $app_session->endpoint == $app_session->SERVER() ) {
+            $app_session->kill_me;
+            return 1;
+        } else {
+            $app_session->reset;
+            $app_session->state( $app_session->DISCONNECTED );
+            # below will lead to infinite looping, should return an exception
+            #$app_session->push_resend( $app_session->app_request( 
+            #        $doc->documentElement->firstChild->threadTrace ) );
+            $logger->debug(
+                "Got Jabber error on client connection $remote_id, nothing we can do..", ERROR );
+            return 1;
+        }
+    }
 
-		next unless (	$msg && UNIVERSAL::isa($msg => 'OpenSRF::DomainObject::oilsMessage'));
+    # cycle through and pass each oilsMessage contained in the message
+    # up to the message layer for processing.
+    for my $msg (@$doc) {
+=cut
 
-		OpenSRF::AppSession->ingress($msg->sender_ingress);
+    for my $msg (@$data) {
 
-		if( $app_session->endpoint == $app_session->SERVER() ) {
+        next unless ($msg && UNIVERSAL::isa($msg => 'OpenSRF::DomainObject::oilsMessage'));
 
-			try {  
+        OpenSRF::AppSession->ingress($msg->sender_ingress);
 
-				if( ! $msg->handler( $app_session ) ) { return 0; }
-				$logger->info(sprintf("Message processing duration: %.3f", (time() - $start_time)));
+        if( $app_session->endpoint == $app_session->SERVER() ) {
 
-			} catch Error with {
+            try {  
 
-				my $e = shift;
-				my $res = OpenSRF::DomainObject::oilsServerError->new();
-				$res->status( $res->status . "\n$e");
-				$app_session->status($res) if $res;
-				$app_session->kill_me;
-				return 0;
+                if( ! $msg->handler( $app_session ) ) { return 0; }
+                $logger->info(sprintf("Message processing duration: %.3f", (time() - $start_time)));
 
-			};
+            } catch Error with {
 
-		} else { 
+                my $e = shift;
+                my $res = OpenSRF::DomainObject::oilsServerError->new();
+                $res->status( $res->status . "\n$e");
+                $app_session->status($res) if $res;
+                $app_session->kill_me;
+                return 0;
 
-			if( ! $msg->handler( $app_session ) ) { return 0; } 
-			$logger->debug(sub{return sprintf("Response processing duration: %.3f", (time() - $start_time)) });
+            };
 
-		}
-	}
+        } else { 
 
-	return $app_session;
+            if( ! $msg->handler( $app_session ) ) { return 0; } 
+            $logger->debug(sub{return sprintf("Response processing duration: %.3f", (time() - $start_time)) });
+
+        }
+    }
+
+    return $app_session;
 }
 
 1;
