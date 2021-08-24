@@ -7,9 +7,10 @@ use Time::HiRes q/time/;
 use Digest::MD5 qw(md5_hex);
 use OpenSRF::Utils::Config;
 use OpenSRF::Utils::Logger qw/$logger/;
-
+use OpenSRF::Transport::Redis::Message;
 
 my $json_stream = JSON::SL->new;
+my $OSRF_MSG_CHUNK_SIZE = 1024;
 
 sub new {
     my ($class, %params) = @_;
@@ -32,7 +33,7 @@ sub params {
 
 sub disconnect {
     my $self = shift;
-    $self->redis->disconnect if $self->redis;
+    $self->redis->quit if $self->redis;
 }
 
 sub gather { 
@@ -58,7 +59,24 @@ sub send {
     my $msg = OpenSRF::Transport::Redis::Message->new(@_);
     $msg->osrf_xid($logger->get_osrf_xid);
     $msg->from($self->bus_id);
-    $self->send($xml);
+
+    my $msg_json = $msg->to_json;
+
+    $logger->debug("send(): $msg_json");
+
+    my $offset = 0;
+    my $msg_len = length($msg_json);
+
+    do {
+        # Break the JSON up into chunks and push a stream of them.
+
+        my $chunk = substr($msg_json, $offset, $OSRF_MSG_CHUNK_SIZE);
+
+        $offset += $OSRF_MSG_CHUNK_SIZE;
+
+        $self->redis->rpush($msg->to, $chunk);
+
+    } while ($offset < $msg_len);
 }
 
 sub initialize {
@@ -68,6 +86,13 @@ sub initialize {
     my $host = $self->params->{host}; 
     my $port = $self->params->{port}; 
     my $sock = $self->params->{sock}; 
+
+    # Listeners use the app name as the bus_id, all others get a
+    # random string.
+    my $bus_id = $self->params->{bus_id} ||
+        substr(md5_hex($$ . time . rand($$)), 0, 12);
+
+    $logger->debug("Redis client connecting with bus_id $bus_id");
 
     my $conf = OpenSRF::Utils::Config->current;
 
@@ -85,10 +110,6 @@ sub initialize {
         throw OpenSRF::EX::Jabber("Could not connect to Redis bus with @connect_args");
         return 0;
     }
-
-    my $bus_id = substr(md5_hex($$ . time . rand($$)), 0, 12);
-
-    $logger->debug("Redis client connecting with bus_id $bus_id")
 
     $self->bus_id($bus_id);
 
@@ -112,6 +133,9 @@ sub process {
     my ($self, $timeout) = @_;
 
     $timeout ||= 0;
+
+    $timeout = 1 if ($timeout > 0 && $timeout < 1);
+
     $timeout = int($timeout);
 
     unless ($self->redis) {
@@ -157,9 +181,9 @@ sub recv {
         $logger->debug("recv() $text");
 
     # ->fetch returns a JSON object as soon as a whole object is parsed.
-    } while (!($resp = $self->stream->fetch));
+    } while (!($resp = $json_stream->fetch));
 
-    return RediSRF::Message->new($resp);
+    return OpenSRF::Transport::Redis::Message->new(%$resp);
 }
 
 
@@ -168,6 +192,7 @@ sub flush_socket {
     return 0 unless $self->redis;
     # Remove any messages directed to me from the bus.
     $self->redis->del($self->bus_id);
+    return 1;
 }
 
 1;

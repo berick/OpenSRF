@@ -219,7 +219,8 @@ sub get_app_targets {
 			("Missing router config information 'router_name' and 'domain'");
 	}
 
-    return ("$router_name\@$domain/$app");
+    #return ("$router_name\@$domain/$app");
+    return $app;
 }
 
 sub stateless {
@@ -578,13 +579,15 @@ sub send {
 		}
 
 	} 
-	my $json = OpenSRF::Utils::JSON->perl2JSON(\@doc);
-	$logger->internal("AppSession sending doc: $json");
+
+	#my $json = OpenSRF::Utils::JSON->perl2JSON(\@doc);
+	#$logger->internal("AppSession sending doc: $json");
 
 	$self->{peer_handle}->send( 
 					to     => $self->remote_id,
 				   thread => $self->session_id,
-				   body   => $json );
+				   body   => \@doc );
+				   #body   => $json );
 
 	if( $disconnect) {
 		$self->state( DISCONNECTED );
@@ -1005,7 +1008,8 @@ sub push_queue {
 	} elsif( UNIVERSAL::isa($resp, "OpenSRF::DomainObject::oilsResult::PartialComplete")) {
 		if ($self->{part_recv_buffer}) {
 			$resp = new OpenSRF::DomainObject::oilsResult;
-			$resp->content( OpenSRF::Utils::JSON->JSON2perl( $self->{part_recv_buffer} ) );
+			#$resp->content( OpenSRF::Utils::JSON->JSON2perl( $self->{part_recv_buffer} ) );
+			$resp->content( $self->{part_recv_buffer} );
 			$self->{part_recv_buffer} = '';
 		} 
 	}
@@ -1061,7 +1065,7 @@ sub respond {
 
 	} else {
 
-        if ($self->max_chunk_size > 0) { # we might need to chunk
+        if (0 && $self->max_chunk_size > 0) { # we might need to chunk
             my $str = OpenSRF::Utils::JSON->perl2JSON($msg);
 
             # XML can add a lot of length to a chunk due to escaping, so we

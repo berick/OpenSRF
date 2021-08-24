@@ -32,8 +32,8 @@ sub load_bootstrap_config {
 
     OpenSRF::Utils::Config->load(config_file => $bootstrap_config_file);
     OpenSRF::Utils::JSON->register_class_hint(name => "OpenSRF::Application", hint => "method", type => "hash", strip => ['session']);
-    OpenSRF::Transport->message_envelope("OpenSRF::Transport::SlimJabber::MessageWrapper");
-    OpenSRF::Transport::PeerHandle->set_peer_client("OpenSRF::Transport::SlimJabber::PeerConnection");
+    OpenSRF::Transport->message_envelope("OpenSRF::Transport::Redis::MessageWrapper");
+    OpenSRF::Transport::PeerHandle->set_peer_client("OpenSRF::Transport::Redis::PeerConnection");
     OpenSRF::Application->server_class('client');
     # Read in a shared portion of the config file
     # for later use in log parameter redaction

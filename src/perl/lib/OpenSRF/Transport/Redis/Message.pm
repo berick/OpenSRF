@@ -1,4 +1,4 @@
-package OpenSRF::Transport::SlimJabber::XMPPMessage;
+package OpenSRF::Transport::Redis::Message;
 use strict; use warnings;
 use OpenSRF::Utils::Logger qw/$logger/;
 use OpenSRF::Utils::JSON;
@@ -71,9 +71,16 @@ sub to_json {
         from => $self->{from},
         osrf_xid => $self->{osrf_xid},
         thread => $self->{thread},
-        body => $body
+        body => $self->{body}
     });
 }
 
+sub from_json {
+    my $self = shift;
+    my $json = shift;
+    $logger->internal("Creating message from: $json");
+    my $hash = OpenSRF::Utils::JSON->JSON2perl($json);
+    $self->{$_} = $hash->{$_} for keys %$hash;
+}
 
 1;

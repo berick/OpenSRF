@@ -29,8 +29,10 @@ sub new {
     die "No suitable config found for PeerConnection\n" unless $config;
 
     my $conf = OpenSRF::Utils::Config->current;
-    my $port = $conf->bootstrap->port || 6379;
-    my $host = $conf->bootstrap->host || '127.0.0.1';
+    #my $port = $conf->bootstrap->port || 6379;
+    my $port = 6379;
+    #my $host = $conf->bootstrap->host || '127.0.0.1';
+    my $host = '127.0.0.1';
     my $sock = $conf->bootstrap->sock;
 
     my $self = $class->SUPER::new(

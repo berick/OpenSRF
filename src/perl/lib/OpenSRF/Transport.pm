@@ -71,6 +71,7 @@ sub handler {
     my( $class, $service, $data ) = @_;
 
     $logger->transport( "Transport handler() received $data", INTERNAL );
+    $logger->transport( "Transport handler() received session: " . $data->thread);
 
     my $remote_id    = $data->from;
     my $sess_id    = $data->thread;
@@ -105,7 +106,7 @@ sub handler {
     } 
 
     # Retrieve or build the app_session as appropriate (server_build decides which to do)
-    $logger->transport( "AppSession is valid or does not exist yet", INTERNAL );
+    $logger->transport( "AppSession $sess_id is valid or does not exist yet", INTERNAL );
     $app_session = OpenSRF::AppSession->server_build( $sess_id, $remote_id, $service );
 
     if( ! $app_session ) {
@@ -154,7 +155,7 @@ sub handler {
     for my $msg (@$doc) {
 =cut
 
-    for my $msg (@$data) {
+    for my $msg (@$body) {
 
         next unless ($msg && UNIVERSAL::isa($msg => 'OpenSRF::DomainObject::oilsMessage'));
 
