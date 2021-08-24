@@ -6,6 +6,7 @@ use JSON::SL;
 use Time::HiRes q/time/;
 use Digest::MD5 qw(md5_hex);
 use OpenSRF::Utils::Config;
+use OpenSRF::Utils::JSON;
 use OpenSRF::Utils::Logger qw/$logger/;
 use OpenSRF::Transport::Redis::Message;
 
@@ -134,6 +135,7 @@ sub process {
 
     $timeout ||= 0;
 
+    # Redis does not support fractional timeouts.
     $timeout = 1 if ($timeout > 0 && $timeout < 1);
 
     $timeout = int($timeout);
@@ -182,6 +184,16 @@ sub recv {
 
     # ->fetch returns a JSON object as soon as a whole object is parsed.
     } while (!($resp = $json_stream->fetch));
+
+    use Data::Dumper;
+    $Data::Dumper::Indent = 0;
+    use Clone qw(clone);
+
+    $resp = clone($resp);
+
+    $resp->{body} = OpenSRF::Utils::JSON->JSONObject2Perl($resp->{body});
+
+    $logger->internal("recv() created object" . Dumper($resp));
 
     return OpenSRF::Transport::Redis::Message->new(%$resp);
 }

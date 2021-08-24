@@ -157,6 +157,8 @@ sub handler {
 
     for my $msg (@$body) {
 
+        $logger->internal("Handling message from body " . ref($msg));
+
         next unless ($msg && UNIVERSAL::isa($msg => 'OpenSRF::DomainObject::oilsMessage'));
 
         OpenSRF::AppSession->ingress($msg->sender_ingress);
@@ -181,6 +183,7 @@ sub handler {
 
         } else { 
 
+            $logger->internal("Client passing message to handler");
             if( ! $msg->handler( $app_session ) ) { return 0; } 
             $logger->debug(sub{return sprintf("Response processing duration: %.3f", (time() - $start_time)) });
 
