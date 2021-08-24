@@ -1,6 +1,7 @@
 package OpenSRF::Transport::Redis::PeerConnection;
 use strict;
 use base qw/OpenSRF::Transport::Redis::Client/;
+use Digest::MD5 qw(md5_hex);
 use OpenSRF::Utils::Config;
 use OpenSRF::Utils::Logger qw(:level);
 
@@ -38,7 +39,8 @@ sub new {
     my $self = $class->SUPER::new(
         host => $host,
         port => $port,
-        sock => $sock
+        sock => $sock,
+        bus_id => "$app-" . substr(md5_hex($$ . time . rand($$)), 0, 12)
     );
 
     bless($self, $class);

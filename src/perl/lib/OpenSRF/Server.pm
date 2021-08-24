@@ -364,6 +364,7 @@ sub build_osrf_handle {
             bus_id => $self->{service},
             host => $domain,
             port => $port,
+            sock => $conf->bootstrap->sock
         );
 
     $self->{osrf_handle}->initialize;

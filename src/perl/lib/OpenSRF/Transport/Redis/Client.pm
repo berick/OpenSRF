@@ -4,7 +4,6 @@ use warnings;
 use Redis;
 use JSON::SL;
 use Time::HiRes q/time/;
-use Digest::MD5 qw(md5_hex);
 use OpenSRF::Utils::Config;
 use OpenSRF::Utils::JSON;
 use OpenSRF::Utils::Logger qw/$logger/;
@@ -87,11 +86,7 @@ sub initialize {
     my $host = $self->params->{host}; 
     my $port = $self->params->{port}; 
     my $sock = $self->params->{sock}; 
-
-    # Listeners use the app name as the bus_id, all others get a
-    # random string.
-    my $bus_id = $self->params->{bus_id} ||
-        substr(md5_hex($$ . time . rand($$)), 0, 12);
+    my $bus_id = $self->params->{bus_id};
 
     $logger->debug("Redis client connecting with bus_id $bus_id");
 
@@ -189,7 +184,9 @@ sub recv {
     $Data::Dumper::Indent = 0;
     use Clone qw(clone);
 
-    $resp = clone($resp);
+    # JSON::SL produces immutable objects.  JSONObject2Perl() wants to
+    # mutate them.  Clone to the rescue.
+    $resp = clone($resp); 
 
     $resp->{body} = OpenSRF::Utils::JSON->JSONObject2Perl($resp->{body});
 
