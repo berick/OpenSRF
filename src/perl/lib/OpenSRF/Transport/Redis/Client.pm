@@ -2,14 +2,12 @@ package OpenSRF::Transport::Redis::Client;
 use strict;
 use warnings;
 use Redis;
-use JSON::SL;
 use Time::HiRes q/time/;
 use OpenSRF::Utils::Config;
 use OpenSRF::Utils::JSON;
 use OpenSRF::Utils::Logger qw/$logger/;
 use OpenSRF::Transport::Redis::Message;
 
-my $json_stream = JSON::SL->new;
 my $OSRF_MSG_CHUNK_SIZE = 1024;
 
 sub new {
@@ -67,16 +65,22 @@ sub send {
     my $offset = 0;
     my $msg_len = length($msg_json);
 
-    do {
+    while (1) {
         # Break the JSON up into chunks and push a stream of them.
 
         my $chunk = substr($msg_json, $offset, $OSRF_MSG_CHUNK_SIZE);
 
         $offset += $OSRF_MSG_CHUNK_SIZE;
 
-        $self->redis->rpush($msg->to, $chunk);
+        if ($offset < $msg_len) {
+            $self->redis->rpush($msg->to, $chunk);
 
-    } while ($offset < $msg_len);
+        } else { 
+            # EOM -- Append the final null byte
+            $self->redis->rpush($msg->to, $chunk . "\0");
+            last;
+        }
+    }
 }
 
 sub initialize {
@@ -150,10 +154,8 @@ sub recv {
 
     my $to = $self->bus_id;
 
-    $json_stream->reset;
-
-    my $resp;
-    do {
+    my $json = '';
+    while (1) {
         my $packet;
 
         if ($timeout == 0) {
@@ -167,28 +169,26 @@ sub recv {
         # Timed out waiting for data.
         return undef unless $packet;
 
-        my $text = $packet->[1]; # [sender, text]
+        $json .= $packet->[1]; # [sender, text]
 
-        eval { $json_stream->feed($text) };
-        if ($@) {
-            $logger->error("recv() got invalid JSON: $text");
-            return undef;
+        if (substr($json, length($json) - 1, 1) eq "\0") { # EOM
+            chop($json); # remove the trailing null byte
+            last;
         }
+    }
 
-        $logger->debug("recv() $text");
-
-    # ->fetch returns a JSON object as soon as a whole object is parsed.
-    } while (!($resp = $json_stream->fetch));
-
+    # TODO: debugging
     use Data::Dumper;
     $Data::Dumper::Indent = 0;
-    use Clone qw(clone);
 
-    # JSON::SL produces immutable objects.  JSONObject2Perl() wants to
-    # mutate them.  Clone to the rescue.
-    $resp = clone($resp); 
+    my $resp;
 
-    $resp->{body} = OpenSRF::Utils::JSON->JSONObject2Perl($resp->{body});
+    eval { $resp = OpenSRF::Utils::JSON->JSON2perl($json); };
+
+    if ($@) {
+        $logger->error("Received invalid JSON: $@ : $json");
+        return undef;
+    }
 
     $logger->internal("recv() created object" . Dumper($resp));
 
