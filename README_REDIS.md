@@ -7,7 +7,7 @@ OpenSRF message transport layer.
 
 * No more Ejabberd
 * No more OpenSRF Routers
-* Messages have fewer hops from client to service
+  * Messages have fewer hops from client to service
 * Fewer layers of message packaging 
   * Messages on the bus are JSON instead of XML wrapped JSON
   * One less round of escaping / unescaping
