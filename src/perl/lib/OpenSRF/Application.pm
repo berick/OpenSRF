@@ -98,6 +98,13 @@ sub server_class {
 	return $server_class;
 }
 
+my $_service_key;
+sub service_key {
+	my ($class, $key) = @_;
+	$_service_key = $key if $key;
+	return $_service_key;
+}
+
 sub thunk {
 	my $self = shift;
 	my $flag = shift;

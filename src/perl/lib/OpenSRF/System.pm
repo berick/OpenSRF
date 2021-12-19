@@ -80,7 +80,7 @@ sub connected {
 }
 
 sub run_service {
-    my($class, $service, $pid_dir) = @_;
+    my($class, $service, $pid_dir, $service_key) = @_;
 
     $0 = "OpenSRF Listener [$service]";
 
@@ -93,6 +93,7 @@ sub run_service {
     my $impl = $getval->('implementation');
 
     OpenSRF::Application::server_class($service);
+    OpenSRF::Application::service_key($service_key);
     OpenSRF::Application->application_implementation($impl);
     OpenSRF::Utils::JSON->register_class_hint(name => $impl, hint => $service, type => 'hash');
     OpenSRF::Application->application_implementation->initialize()
