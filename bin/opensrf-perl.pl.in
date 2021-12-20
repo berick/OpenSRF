@@ -62,7 +62,7 @@ my $opt_reload_all = 0;
 my $opt_quiet = 0;
 my $opt_diagnostic = 0;
 my $opt_ignore_orphans = 0;
-my $opt_service_key = int(rand(1000000000));
+my $opt_private_key;
 my $sclient;
 my @perl_services;
 my @nonperl_services;
@@ -70,7 +70,7 @@ my %max_children_map;
 my $hostname = $ENV{OSRF_HOSTNAME} || hostfqdn();
 
 GetOptions(
-    'service-key=s' => \$opt_service_key,
+    'service-key=s' => \$opt_private_key,
     'service=s' => \$opt_service,
     'config=s' => \$opt_config,
     'pid-dir=s' => \$opt_pid_dir,
@@ -114,7 +114,7 @@ if ($opt_localhost) {
     $ENV{OSRF_HOSTNAME} = $hostname;
 }
 
-my $C_COMMAND = "opensrf-c -c $opt_config -x opensrf -p $opt_pid_dir -h $hostname -k $opt_service_key";
+my $C_COMMAND = "opensrf-c -c $opt_config -x opensrf -p $opt_pid_dir -h $hostname -k $opt_private_key";
 my $PY_COMMAND = "opensrf.py -f $opt_config -p $opt_pid_dir ". ($opt_localhost ? '-l' : '');
 
 sub verify_services {
@@ -330,6 +330,10 @@ sub do_init {
     my $sclient = OpenSRF::Utils::SettingsClient->new;
     my $apps = $sclient->config_value("activeapps", "appname");
 
+    # Pass the private key to the services at startup, otherwise
+    # they would not have access to the opensrf.settings service.
+    $opt_private_key = $sclient->config_value('private_key');
+
     # disconnect the top-level network handle
     OpenSRF::Transport::PeerHandle->retrieve->disconnect;
 
@@ -394,7 +398,7 @@ sub do_start {
 
     if(grep { $_ eq $service } @perl_services) {
         return unless do_daemon($service);
-        OpenSRF::System->run_service($service, $opt_pid_dir, $opt_service_key);
+        OpenSRF::System->run_service($service, $opt_pid_dir, $opt_private_key);
 
     } else {
         # note: we don't daemonize non-perl services, but instead

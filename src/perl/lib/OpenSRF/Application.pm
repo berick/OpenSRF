@@ -98,11 +98,25 @@ sub server_class {
 	return $server_class;
 }
 
-my $_service_key;
-sub service_key {
+my $_private_service_key;
+sub private_service_key {
 	my ($class, $key) = @_;
-	$_service_key = $key if $key;
-	return $_service_key;
+	$_private_service_key = $key if $key;
+	return $_private_service_key;
+}
+
+# Returns true if this is a public service
+my $_public_service;
+sub public_service {
+	my $class = shift;
+
+	unless (defined $_public_service) {
+		my $settings = OpenSRF::Utils::SettingsClient->new;
+		my @pubs = $settings->config_value(public_services => 'service');
+		$_public_service = scalar(grep {$_ eq $class->server_class} @pubs) > 0;
+	}
+
+	return $_public_service;
 }
 
 sub thunk {

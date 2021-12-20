@@ -17,6 +17,7 @@ sub new {
         $self->{from} = $args{from} || '';
         $self->{thread} = $args{thread} || '';
         $self->{body} = $args{body} || '';
+        $self->{service_key} = $args{service_key} || '';
         $self->{osrf_xid} = $args{osrf_xid} || '';
     }
 
@@ -43,7 +44,11 @@ sub body {
     $self->{body} = $body if defined $body;
     return $self->{body};
 }
-sub status {
+sub service_key {
+    my($self, $service_key) = @_;
+    $self->{service_key} = $service_key if defined $service_key;
+    return $self->{service_key};
+}sub status {
     my($self, $status) = @_;
     $self->{status} = $status if defined $status;
     return $self->{status};
@@ -71,6 +76,7 @@ sub to_json {
         from => $self->{from},
         osrf_xid => $self->{osrf_xid},
         thread => $self->{thread},
+        service_key => $self->{service_key},
         body => $self->{body}
     });
 }

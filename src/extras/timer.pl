@@ -4,6 +4,7 @@ use warnings;
 use Getopt::Long;
 use OpenSRF::Utils::Logger q/$logger/;
 use OpenSRF::AppSession;
+use OpenSRF::Application;
 use Time::HiRes qw/time/;
 
 # Testing with Evergreen storage service by default.
@@ -17,11 +18,15 @@ my $small_echo_data = '123701293847102934817019';
 my $large_echo_data = join('', <DATA>);
 
 my $osrf_config = '/openils/conf/opensrf_core.xml';
+my $service_key;
 my $ops = GetOptions(
     'osrf-config=s' => \$osrf_config,
+    'service-key=s' => \$service_key
 );
 
 OpenSRF::System->bootstrap_client(config_file => $osrf_config);
+
+OpenSRF::Application->private_service_key($service_key) if $service_key;
 
 sub echoloop {
     my $data = shift;

@@ -7,7 +7,7 @@ use OpenSRF::Utils::JSON;
 use OpenSRF::Utils::Logger qw(:level);
 use OpenSRF::DomainObject::oilsResponse qw/:status/;
 use OpenSRF::EX qw/:try/;
-use OpenSRF::Transport::SlimJabber::MessageWrapper;
+use OpenSRF::Utils::SettingsClient;
 
 #------------------ 
 # --- These must be implemented by all Transport subclasses
@@ -77,9 +77,9 @@ sub handler {
     my $sess_id    = $data->thread;
     my $body    = $data->body;
     my $type    = $data->type;
+    my $key     = $data->service_key || '';
 
     $logger->set_osrf_xid($data->osrf_xid);
-
 
     if (defined($type) and $type eq 'error') {
         throw OpenSRF::EX::Session ("$remote_id IS NOT CONNECTED TO THE NETWORK!!!");
@@ -112,6 +112,31 @@ sub handler {
     if( ! $app_session ) {
         throw OpenSRF::EX::Session ("Transport::handler(): No AppSession object returned from server_build()");
     }
+
+    my $settings = OpenSRF::Utils::SettingsClient->new;
+    my $service_key = OpenSRF::Application->private_service_key;
+
+    if (OpenSRF::Application->server_class eq 'client' || 
+        OpenSRF::Application->public_service || 
+        $service_key eq $key) {
+
+        $logger->internal("Access granted to service: $service");
+
+    } else {
+        # Sending any messages to private services without a service
+        # key is verboten.
+
+        $logger->warn("Private service key required to access '$service'");
+
+        $app_session->status(
+            OpenSRF::DomainObject::oilsMethodException->new( 
+                statusCode => STATUS_FORBIDDEN(),
+                status => "Service $service is private"
+            )
+        );
+        return 1;
+    }
+
 
 =head NOT NEEDED
 

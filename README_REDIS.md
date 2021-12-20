@@ -24,6 +24,7 @@ sudo apt install redis-server libredis-perl libhiredis-dev
     instead of having them go through the listener.  The listener would
     just manages child procs.
 * 'redis-cli monitor' command is very useful for debugging
+  * TODO add to cli demo
 
 ## Limitations
 
