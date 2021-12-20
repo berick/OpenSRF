@@ -28,6 +28,8 @@ OpenSRF::System->bootstrap_client(config_file => $osrf_config);
 
 OpenSRF::Application->private_service_key($service_key) if $service_key;
 
+warn "SET KEY TO " . OpenSRF::Application->private_service_key . "\n";
+
 sub echoloop {
     my $data = shift;
     my $ses = shift || OpenSRF::AppSession->create($test_service);
@@ -41,6 +43,8 @@ sub echoloop {
         } else {
             warn "Got bad data: $resp\n";
         }
+
+        exit; # TODO
     }
 
     my $dur = time - $start;

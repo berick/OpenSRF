@@ -66,6 +66,12 @@ sub type {
 	return $self->{type};
 }
 
+sub service_key {
+	my ($self, $key) = @_;
+	$self->{service_key} = $key if defined $key;
+	return $self->{service_key};
+}
+
 =head2 OpenSRF::DomainObject::oilsMessage->api_level( [$new_api_level] )
 
 =over 4

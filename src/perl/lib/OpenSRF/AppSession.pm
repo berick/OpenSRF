@@ -506,6 +506,10 @@ sub send {
 	my $disconnect = 0;
 	my $connecting = 0;
 
+    use Data::Dumper;
+    $Data::Dumper::Indent = 0;
+    $logger->info("SENDING " . Dumper(\@payload_list));
+
 	while( @payload_list ) {
 
 		my ($msg_type, $payload) = ( shift(@payload_list), shift(@payload_list) ); 
@@ -523,13 +527,13 @@ sub send {
 
 		my $msg = OpenSRF::DomainObject::oilsMessage->new();
 		$msg->type($msg_type);
-    $msg->service_key(OpenSRF::Application->private_service_key);
 	
 		no warnings;
 		$msg->threadTrace( $tT || int($self->session_threadTrace) || int($self->last_threadTrace) );
 		use warnings;
 	
 		if ($msg->type eq 'REQUEST') {
+
 			if ( !defined($tT) || $self->last_threadTrace != $tT ) {
 				$msg->update_threadTrace;
 				$self->session_threadTrace( $msg->threadTrace );
@@ -585,11 +589,17 @@ sub send {
 	#my $json = OpenSRF::Utils::JSON->perl2JSON(\@doc);
 	#$logger->internal("AppSession sending doc: $json");
 
-	$self->{peer_handle}->send( 
-					to     => $self->remote_id,
-				   thread => $self->session_id,
-				   body   => \@doc );
-				   #body   => $json );
+	my %args = (
+		to => $self->remote_id, 
+		thread => $self->session_id, 
+		body => \@doc
+	);
+
+	# Only clients send the service key.
+	$args{service_key} = OpenSRF::Application->private_service_key
+		if $self->endpoint == CLIENT;
+
+	$self->{peer_handle}->send(%args);
 
 	if( $disconnect) {
 		$self->state( DISCONNECTED );

@@ -100,7 +100,7 @@ sub handler {
             my $res = OpenSRF::DomainObject::oilsBrokenSession->new();
             $res->status( "Backend Gone or invalid sender, Reconnect" );
             $app_session->status( $res );
-            return 1;
+            return 0;
         }
     } 
 
@@ -112,9 +112,7 @@ sub handler {
         throw OpenSRF::EX::Session ("Transport::handler(): No AppSession object returned from server_build()");
     }
 
-
-    if (OpenSRF::Application->server_class eq 'client' || 
-        OpenSRF::Application->public_service) {
+    if ($service eq 'client' || OpenSRF::Application->public_service) {
 
         $logger->internal("Access granted to service: $service");
 
@@ -128,8 +126,8 @@ sub handler {
 
         if (!$service_key) {
             $logger->error(
-                "Private serice '$service' has no key; rejecting all messages");
-            return 1;
+                "Private service '$service' has no key; rejecting all messages");
+            return 0;
         }
 
         if ($sent_key eq $service_key) {
@@ -146,7 +144,7 @@ sub handler {
                 )
             );
 
-            return 1;
+            return 0;
         }
     }
 

@@ -77,7 +77,8 @@ sub to_json {
         from => $self->{from},
         osrf_xid => $self->{osrf_xid},
         thread => $self->{thread},
-        service_key => $self->{service_key},
+        # service_key value will only be set for clients.
+        $self->{service_key} ? (service_key => $self->{service_key}) : (),
         body => $self->{body}
     });
 }

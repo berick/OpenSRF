@@ -18,6 +18,7 @@ sudo apt install redis-server libredis-perl libhiredis-dev
   * Messages have fewer hops from client to service
 * One less round of message packing and unpacking
   * Messages on the bus are JSON instead of JSON packed in XML.
+* Automatic time-based client reconnections (in Perl anyway, need to check C)
 * Message chunking baked in to implementation
 * Opens the door to direct-to-drone request delivery.
   * Messages can be popped from the request queue directy by drones
@@ -34,12 +35,21 @@ sudo apt install redis-server libredis-perl libhiredis-dev
 * Sending a request to a service that is not running will linger unanswered
   instead of resulting in a not-found response.
 
-# Private Service Security
+## Private Service Security
 
-* A private key is set at service start time, which is only known to 
+### PoC Approach
+
+* Services are assumed to be "private" unless explicitly set to "public"
+  in opensrf.xml
+* A private key is stored in opensrf.xml, which is only known to 
   OpenSRF services and their clients.  Clients that have the key can 
-  access private services.
-  * TODO: Teach osrf\_control to generate the key and pass to services
+  access private services.  Standalone clients (e.g. websocket translator,
+  Perl clients, etc.) do not read opensrf.xml and won't know the key.
+
+### Other Options
+* Run public and private Redis instances and require the client to
+  know which bus to send each request down.  Standalone clients will
+  only connect to the "public" bus.
 * Redis supports authentication and access control lists if we want
   to beef up the security.
 

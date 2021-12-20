@@ -93,7 +93,7 @@ sub run_service {
     my $impl = $getval->('implementation');
 
     OpenSRF::Application::server_class($service);
-    OpenSRF::Application::private_service_key($private_service_key);
+    OpenSRF::Application->private_service_key($private_service_key);
     OpenSRF::Application->application_implementation($impl);
     OpenSRF::Utils::JSON->register_class_hint(name => $impl, hint => $service, type => 'hash');
     OpenSRF::Application->application_implementation->initialize()

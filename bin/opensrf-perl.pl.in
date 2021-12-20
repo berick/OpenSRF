@@ -114,7 +114,7 @@ if ($opt_localhost) {
     $ENV{OSRF_HOSTNAME} = $hostname;
 }
 
-my $C_COMMAND = "opensrf-c -c $opt_config -x opensrf -p $opt_pid_dir -h $hostname -k $opt_private_key";
+my $C_COMMAND = "opensrf-c -c $opt_config -x opensrf -p $opt_pid_dir -h $hostname";
 my $PY_COMMAND = "opensrf.py -f $opt_config -p $opt_pid_dir ". ($opt_localhost ? '-l' : '');
 
 sub verify_services {
@@ -332,7 +332,9 @@ sub do_init {
 
     # Pass the private key to the services at startup, otherwise
     # they would not have access to the opensrf.settings service.
-    $opt_private_key = $sclient->config_value('private_key');
+    $opt_private_key = $sclient->config_value('private_key') || '';
+
+    $C_COMMAND .= " -k $opt_private_key";                                      
 
     # disconnect the top-level network handle
     OpenSRF::Transport::PeerHandle->retrieve->disconnect;
