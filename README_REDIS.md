@@ -3,6 +3,11 @@
 Proof of concept project to replace XMPP / Ejabberd with Redis as the
 OpenSRF message transport layer.
 
+## Install
+```sh
+sudo apt install redis-server libredis-perl libhiredis-dev
+```
+
 ## Benefits
 
 * Speed
@@ -18,6 +23,7 @@ OpenSRF message transport layer.
   * Messages can be popped from the request queue directy by drones
     instead of having them go through the listener.  The listener would
     just manages child procs.
+* 'redis-cli monitor' command is very useful for debugging
 
 ## Limitations
 
