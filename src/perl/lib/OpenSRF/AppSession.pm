@@ -3,6 +3,7 @@ use OpenSRF::DomainObject::oilsMessage;
 use OpenSRF::DomainObject::oilsMethod;
 use OpenSRF::DomainObject::oilsResponse qw/:status/;
 use OpenSRF::Transport::PeerHandle;
+use OpenSRF::Application;
 use OpenSRF::Utils::JSON;
 use OpenSRF::Utils::Logger qw(:level);
 use OpenSRF::Utils::SettingsClient;
@@ -522,6 +523,7 @@ sub send {
 
 		my $msg = OpenSRF::DomainObject::oilsMessage->new();
 		$msg->type($msg_type);
+    $msg->service_key(OpenSRF::Application->private_service_key);
 	
 		no warnings;
 		$msg->threadTrace( $tT || int($self->session_threadTrace) || int($self->last_threadTrace) );
@@ -875,7 +877,6 @@ sub new {
 			resp_count		=> 0,
 			max_bundle_count	=> 0,
 			current_bundle_count=> 0,
-			max_chunk_size		=> 0,
 			max_bundle_size		=> 0,
 			current_bundle_size	=> 0,
 			current_bundle		=> [],
@@ -905,13 +906,6 @@ sub max_bundle_size {
 	my $value = shift;
 	$self->{max_bundle_size} = $value if (defined($value));
 	return $self->{max_bundle_size};
-}
-
-sub max_chunk_size {
-	my $self = shift;
-	my $value = shift;
-	$self->{max_chunk_size} = $value if (defined($value));
-	return $self->{max_chunk_size};
 }
 
 sub recv_timeout {
@@ -1065,40 +1059,6 @@ sub respond {
 
 	} else {
 
-        if (0 && $self->max_chunk_size > 0) { # we might need to chunk
-            my $str = OpenSRF::Utils::JSON->perl2JSON($msg);
-
-            # XML can add a lot of length to a chunk due to escaping, so we
-            # calculate chunk size based on an XML-escaped version of the message.
-            # Example: If escaping doubles the length of the string then $ratio
-            # will be 0.5 and we'll cut the chunk size for this message in half.
-
-            my $raw_length = length(Encode::encode_utf8($str)); # count bytes
-            my $escaped_length = $raw_length;
-            $escaped_length += 11 * (() = ( $str =~ /"/g)); # 7 \s and &quot;
-            $escaped_length += 4 * (() = ( $str =~ /&/g)); # &amp;
-            $escaped_length += 3 * (() = ( $str =~ /[<>]/g)); # &lt; / &gt;
-
-            my $chunk_size = $self->max_chunk_size;
-
-            if ($escaped_length > $self->max_chunk_size) {
-                $chunk_size = POSIX::floor(($raw_length / $escaped_length) * $self->max_chunk_size);
-            }
-
-            if ($raw_length > $chunk_size) { # send partials ("chunking")
-                my $num_bytes = length(Encode::encode_utf8($str));
-                for (my $i = 0; $i < $num_bytes; $i += $chunk_size) {
-                    $response = new OpenSRF::DomainObject::oilsResult::Partial;
-                    $response->content( substr($str, $i, $chunk_size) );
-                    $self->session->send($type, $response, $self->threadTrace);
-                }
-                # This triggers reconstruction on the remote end
-                $response = new OpenSRF::DomainObject::oilsResult::PartialComplete;
-                return $self->session->send($type, $response, $self->threadTrace);
-            }
-        }
-
-        # message failed to exceed max chunk size OR chunking disabled
         $response = new OpenSRF::DomainObject::oilsResult;
         $response->content($msg);
     }
@@ -1198,8 +1158,6 @@ sub new {
         respond_directly=> 0,  # use the passed session directly (RD mode)
         resp            => [],
         threadTrace     => 0,  # needed for respond in RD mode
-        max_chunk_count => 0,  # needed for respond in RD mode
-        max_chunk_size  => 0,  # needed for respond in RD mode
         max_bundle_size	=> 0,
         current_bundle  => [], # needed for respond_complete in RD mode
         current_bundle_count=> 0,

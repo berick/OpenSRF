@@ -259,6 +259,13 @@ vim:et:ts=2:sw=2:
         </app_settings>
       </opensrf.validator>
     </apps>
+
+    <private_key>1487102384710239</private_key>
+    <public_services>
+        <service>opensrf.math</service>
+        <service>opensrf.dbmath</service>
+    </public_services>
+
   </default>
 
   <hosts>

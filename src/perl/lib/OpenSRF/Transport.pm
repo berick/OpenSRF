@@ -77,7 +77,6 @@ sub handler {
     my $sess_id    = $data->thread;
     my $body    = $data->body;
     my $type    = $data->type;
-    my $key     = $data->service_key || '';
 
     $logger->set_osrf_xid($data->osrf_xid);
 
@@ -113,12 +112,9 @@ sub handler {
         throw OpenSRF::EX::Session ("Transport::handler(): No AppSession object returned from server_build()");
     }
 
-    my $settings = OpenSRF::Utils::SettingsClient->new;
-    my $service_key = OpenSRF::Application->private_service_key;
 
     if (OpenSRF::Application->server_class eq 'client' || 
-        OpenSRF::Application->public_service || 
-        $service_key eq $key) {
+        OpenSRF::Application->public_service) {
 
         $logger->internal("Access granted to service: $service");
 
@@ -126,59 +122,33 @@ sub handler {
         # Sending any messages to private services without a service
         # key is verboten.
 
-        $logger->warn("Private service key required to access '$service'");
+        my $sent_key = $data->service_key || '';
+        my $settings = OpenSRF::Utils::SettingsClient->new;
+        my $service_key = OpenSRF::Application->private_service_key;
 
-        $app_session->status(
-            OpenSRF::DomainObject::oilsMethodException->new( 
-                statusCode => STATUS_FORBIDDEN(),
-                status => "Service $service is private"
-            )
-        );
-        return 1;
-    }
-
-
-=head NOT NEEDED
-
-    # Create a document from the JSON contained within the message 
-    my $doc; 
-    eval { $doc = OpenSRF::Utils::JSON->JSON2perl($body); };
-    if( $@ ) {
-
-        $logger->warn("Received bogus JSON: $@");
-        $logger->warn("Bogus JSON data: $body");
-        my $res = OpenSRF::DomainObject::oilsXMLParseError->new( status => "JSON Parse Error --- $body\n\n$@" );
-
-        $app_session->status($res);
-        #$app_session->kill_me;
-        return 1;
-    }
-
-    $logger->transport( "Transport::handler() creating \n$body", INTERNAL );
-
-    # We need to disconnect the session if we got a jabber error on the client side.  For
-    # server side, we'll just tear down the session and go away.
-    if (defined($type) and $type eq 'error') {
-        # If we're a server
-        if( $app_session->endpoint == $app_session->SERVER() ) {
-            $app_session->kill_me;
+        if (!$service_key) {
+            $logger->error(
+                "Private serice '$service' has no key; rejecting all messages");
             return 1;
+        }
+
+        if ($sent_key eq $service_key) {
+            $logger->internal("Correct private service key provided");
+
         } else {
-            $app_session->reset;
-            $app_session->state( $app_session->DISCONNECTED );
-            # below will lead to infinite looping, should return an exception
-            #$app_session->push_resend( $app_session->app_request( 
-            #        $doc->documentElement->firstChild->threadTrace ) );
-            $logger->debug(
-                "Got Jabber error on client connection $remote_id, nothing we can do..", ERROR );
+            $logger->warn("Private service key does not match ".
+                "configuration for $service; key sent=$sent_key");
+
+            $app_session->status(
+                OpenSRF::DomainObject::oilsMethodException->new( 
+                    statusCode => STATUS_FORBIDDEN(),
+                    status => "Service $service is private"
+                )
+            );
+
             return 1;
         }
     }
-
-    # cycle through and pass each oilsMessage contained in the message
-    # up to the message layer for processing.
-    for my $msg (@$doc) {
-=cut
 
     for my $msg (@$body) {
 

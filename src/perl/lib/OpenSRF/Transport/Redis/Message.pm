@@ -48,7 +48,8 @@ sub service_key {
     my($self, $service_key) = @_;
     $self->{service_key} = $service_key if defined $service_key;
     return $self->{service_key};
-}sub status {
+}
+sub status {
     my($self, $status) = @_;
     $self->{status} = $status if defined $status;
     return $self->{status};

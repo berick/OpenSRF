@@ -61,13 +61,6 @@ sub max_bundle_count {
 	return $self->{max_bundle_count} || 0;
 }
 
-sub max_chunk_size {
-	my $self = shift;
-	return 0 unless ref($self);
-	return $self->{max_chunk_size} if (defined($self->{max_chunk_size}));
-	return $self->max_bundle_size * 2;
-}
-
 sub api_name {
 	my $self = shift;
 	return 1 unless ref($self);
@@ -203,7 +196,6 @@ sub handler {
 			my $appreq = OpenSRF::AppRequest->new( $session );
 			$appreq->max_bundle_size( $coderef->max_bundle_size );
 			$appreq->max_bundle_count( $coderef->max_bundle_count );
-			$appreq->max_chunk_size( $coderef->max_chunk_size );
 
 			$log->debug(sub{return "in_request = $in_request : [" . $appreq->threadTrace."]" }, INTERNAL );
 			if( $in_request ) {
@@ -595,7 +587,6 @@ sub method_lookup {
 
 	if ($meth && ref($self)) {
 		$meth->session($self->session); # Pass the caller's session
-		$meth->max_chunk_size($self->max_chunk_size);
 		$meth->max_bundle_size($self->max_bundle_size);
 	}
 
@@ -607,7 +598,6 @@ sub dispatch {
 	$log->debug("Creating a dispatching SubRequest object", DEBUG);
     my $req = OpenSRF::AppSubrequest->new(
         session => $self->session,
-        max_chunk_size  => $self->max_chunk_size,
         max_bundle_size  => $self->max_bundle_size,
         respond_directly => 1
     );
@@ -626,7 +616,6 @@ sub run {
 		unshift @params, $req;
 		$req = OpenSRF::AppSubrequest->new(
 			session => $self->session,
-			max_chunk_size  => $self->max_chunk_size,
 			max_bundle_size  => $self->max_bundle_size
 		);
 	} else {
