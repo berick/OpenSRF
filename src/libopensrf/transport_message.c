@@ -272,22 +272,22 @@ transport_message* new_message_from_json(const char* msg_json) {
         return NULL;
     }
 
-    char* sender = jsonObjectGetString(jsonObjectGetKeyConst(json_hash, "from"));
+    const char* sender = jsonObjectGetString(jsonObjectGetKeyConst(json_hash, "from"));
     if (sender) { new_msg->sender = strdup((const char*) sender); }
 
-    char* recipient = jsonObjectGetString(jsonObjectGetKeyConst(json_hash, "to"));
+    const char* recipient = jsonObjectGetString(jsonObjectGetKeyConst(json_hash, "to"));
     if (recipient) { new_msg->recipient = strdup((const char*) recipient); }
 
-    char* thread = jsonObjectGetString(jsonObjectGetKeyConst(json_hash, "thread"));
+    const char* thread = jsonObjectGetString(jsonObjectGetKeyConst(json_hash, "thread"));
     if (thread) { new_msg->thread = strdup((const char*) thread); }
 
-    char* service_key = jsonObjectGetString(jsonObjectGetKeyConst(json_hash, "service_key"));
+    const char* service_key = jsonObjectGetString(jsonObjectGetKeyConst(json_hash, "service_key"));
     if (service_key) { new_msg->service_key = strdup((const char*) service_key); }
 
-    char* osrf_xid = jsonObjectGetString(jsonObjectGetKeyConst(json_hash, "osrf_xid"));
+    const char* osrf_xid = jsonObjectGetString(jsonObjectGetKeyConst(json_hash, "osrf_xid"));
     if (osrf_xid) { message_set_osrf_xid(new_msg, (char*) osrf_xid); }
 
-    jsonObject* body_hash = jsonObjectGetKeyConst(json_hash, "body");
+    const jsonObject* body_hash = jsonObjectGetKeyConst(json_hash, "body");
 
     if (body_hash == NULL || body_hash->type != JSON_HASH) {
         osrfLogError(OSRF_LOG_MARK,  "new_message_from_json() message has no body");
@@ -370,23 +370,25 @@ void message_set_router_info( transport_message* msg, const char* router_from,
 	@return 1 if successful, or 0 upon error.  The only error condition is if @a msg is NULL.
 */
 int message_free( transport_message* msg ){
-	if( msg == NULL ) { return 0; }
+    if( msg == NULL ) { return 0; }
 
-	free(msg->body);
-	free(msg->thread);
-	free(msg->subject);
-	free(msg->recipient);
-	free(msg->service_key);
-	free(msg->sender);
-	free(msg->router_from);
-	free(msg->router_to);
-	free(msg->router_class);
-	free(msg->router_command);
-	free(msg->osrf_xid);
-	if( msg->error_type != NULL ) free(msg->error_type);
-	if( msg->msg_xml != NULL ) free(msg->msg_xml);
-	free(msg);
-	return 1;
+    free(msg->body);
+    free(msg->thread);
+    free(msg->subject);
+    free(msg->recipient);
+    free(msg->service_key);
+    free(msg->sender);
+    free(msg->router_from);
+    free(msg->router_to);
+    free(msg->router_class);
+    free(msg->router_command);
+    free(msg->osrf_xid);
+    if( msg->error_type != NULL ) free(msg->error_type);
+    if( msg->msg_xml != NULL ) free(msg->msg_xml);
+    if (msg->msg_json != NULL) free(msg->msg_json);
+    if (msg->body_hash != NULL) jsonObjectFree(msg->body_hash);
+    free(msg);
+    return 1;
 }
 
 
@@ -488,6 +490,27 @@ int message_prepare_xml( transport_message* msg ) {
 
 	return 1;
 }
+
+int message_prepare_json(transport_message* msg) {
+
+    if (!msg) { return 0; }
+    if (msg->msg_json ) { return 1; }   /* already done */
+
+    jsonObject* json_hash = jsonNewObject(NULL);
+    jsonObjectSetKey(json_hash, "to", jsonNewObject(msg->recipient));
+    jsonObjectSetKey(json_hash, "from", jsonNewObject(msg->sender));
+    jsonObjectSetKey(json_hash, "thread", jsonNewObject(msg->sender));
+    jsonObjectSetKey(json_hash, "osrf_xid", jsonNewObject(msg->osrf_xid));
+    jsonObjectSetKey(json_hash, "service_key", jsonNewObject(msg->service_key));
+    jsonObjectSetKey(json_hash, "body", jsonObjectClone(msg->body_hash));
+
+    msg->msg_json = jsonObjectToJSON(json_hash);
+
+    jsonObjectFree(json_hash);
+
+    return 1;
+}
+
 
 
 /**

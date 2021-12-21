@@ -56,6 +56,7 @@ struct transport_message_struct {
 	int error_code;        /**< Value of the "code" attribute of &lt;error&gt;. */
 	int broadcast;         /**< Value of the "broadcast" attribute in the message element. */
 	char* msg_xml;         /**< The entire message as XML, complete with entity encoding. */
+    char* msg_json;        /**< The entier message as JSON */
     char* service_key;     /**< Private service key. */
 	struct transport_message_struct* next;
 };
