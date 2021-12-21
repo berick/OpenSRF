@@ -1,4 +1,5 @@
 #include <opensrf/transport_message.h>
+#include <opensrf/osrf_json.h>
 
 /**
 	@file transport_message.c
@@ -61,6 +62,7 @@ transport_message* message_init( const char* body, const char* subject,
 		return NULL;
 	}
 
+    msg->body_hash      = NULL;
 	msg->router_from    = NULL;
 	msg->router_to      = NULL;
 	msg->router_class   = NULL;
@@ -236,6 +238,75 @@ transport_message* new_message_from_xml( const char* msg_xml ) {
 
 	return new_msg;
 }
+
+transport_message* new_message_from_json(const char* msg_json) {
+
+    if (msg_json == NULL || *msg_json == '\0') { return NULL; }
+
+    transport_message* new_msg = safe_malloc(sizeof(transport_message));
+
+    new_msg->body           = NULL;
+    new_msg->subject        = NULL;
+    new_msg->thread         = NULL;
+    new_msg->recipient      = NULL;
+    new_msg->sender         = NULL;
+    new_msg->router_from    = NULL;
+    new_msg->router_to      = NULL;
+    new_msg->router_class   = NULL;
+    new_msg->router_command = NULL;
+    new_msg->osrf_xid       = NULL;
+    new_msg->is_error       = 0;
+    new_msg->error_type     = NULL;
+    new_msg->error_code     = 0;
+    new_msg->broadcast      = 0;
+    new_msg->msg_xml        = NULL;
+    new_msg->body_hash      = NULL;
+    new_msg->next           = NULL;
+
+    jsonObject* json_hash = jsonParse(msg_json);
+
+    if (json_hash == NULL || json_hash->type != JSON_HASH) {
+        osrfLogError(OSRF_LOG_MARK,  "new_message_from_json() received bad JSON");
+        jsonObjectFree(json_hash);
+        message_free(new_msg);
+        return NULL;
+    }
+
+    char* sender = jsonObjectGetString(jsonObjectGetKeyConst(json_hash, "from"));
+    if (sender) { new_msg->sender = strdup((const char*) sender); }
+
+    char* recipient = jsonObjectGetString(jsonObjectGetKeyConst(json_hash, "to"));
+    if (recipient) { new_msg->recipient = strdup((const char*) recipient); }
+
+    char* thread = jsonObjectGetString(jsonObjectGetKeyConst(json_hash, "thread"));
+    if (thread) { new_msg->thread = strdup((const char*) thread); }
+
+    char* service_key = jsonObjectGetString(jsonObjectGetKeyConst(json_hash, "service_key"));
+    if (service_key) { new_msg->service_key = strdup((const char*) service_key); }
+
+    char* osrf_xid = jsonObjectGetString(jsonObjectGetKeyConst(json_hash, "osrf_xid"));
+    if (osrf_xid) { message_set_osrf_xid(new_msg, (char*) osrf_xid); }
+
+    jsonObject* body_hash = jsonObjectGetKeyConst(json_hash, "body");
+
+    if (body_hash == NULL || body_hash->type != JSON_HASH) {
+        osrfLogError(OSRF_LOG_MARK,  "new_message_from_json() message has no body");
+        jsonObjectFree(json_hash);
+        message_free(new_msg);
+        return NULL;
+    } else {
+        new_msg->body_hash = jsonObjectClone(body_hash); 
+    }
+
+    if (new_msg->thread == NULL)  { new_msg->thread = strdup(""); }
+    if (new_msg->subject == NULL) { new_msg->subject = strdup(""); }
+    if (new_msg->body == NULL)    { new_msg->body = strdup(""); }
+
+    jsonObjectFree(json_hash);
+
+    return new_msg;
+}
+
 
 /**
 	@brief Populate the osrf_xid (an OSRF extension) of a transport_message.

@@ -20,6 +20,7 @@
 #include <opensrf/utils.h>
 #include <opensrf/xml_utils.h>
 #include <opensrf/log.h>
+#include <opensrf/osrf_json.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -40,6 +41,7 @@ extern "C" {
 */
 struct transport_message_struct {
 	char* body;            /**< Text enclosed by the body element. */
+    jsonObject* body_hash; /**< OpenSRF message as a JSON object */
 	char* subject;         /**< Text enclosed by the subject element. */
 	char* thread;          /**< Text enclosed by the thread element. */
 	char* recipient;       /**< Value of the "to" attribute in the message element. */
@@ -64,6 +66,7 @@ transport_message* message_init( const char* body, const char* subject,
         const char* service_key);
 
 transport_message* new_message_from_xml( const char* msg_xml );
+transport_message* new_message_from_json( const char* msg_json );
 
 void message_set_router_info( transport_message* msg, const char* router_from,
 		const char* router_to, const char* router_class, const char* router_command,
@@ -72,6 +75,7 @@ void message_set_router_info( transport_message* msg, const char* router_from,
 void message_set_osrf_xid( transport_message* msg, const char* osrf_xid );
 
 int message_prepare_xml( transport_message* msg );
+int message_prepare_json( transport_message* msg );
 
 int message_free( transport_message* msg );
 
