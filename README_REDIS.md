@@ -20,19 +20,24 @@ sudo apt install redis-server libredis-perl libhiredis-dev
   * Messages on the bus are JSON instead of JSON packed in XML.
 * Automatic time-based client reconnections (in Perl anyway, need to check C)
 * Message chunking baked in to implementation
+* 'redis-cli monitor' command is very useful for debugging
+  * TODO add to cli demo
+* OpenSRF request "backlog" no longer needed.  Unprocessed requests
+  will stay in the Redis message queue.
+
+## Opportunities
+
 * Opens the door to direct-to-drone request delivery.
   * Messages can be popped from the request queue directy by drones
     instead of having them go through the listener.  The listener would
     just manages child procs.
-* 'redis-cli monitor' command is very useful for debugging
-  * TODO add to cli demo
 
 ## Limitations
 
 * No cross-domain (i.e. cross-brick) routing.
   * Affects some Dojo/translator UI's
   * NOTE: Bricks that share a Redis instance could still cross-communicate
-* Sending a request to a service that is not running will linger unanswered
+* Requests sent to a service that is not running will linger unanswered
   instead of resulting in a not-found response.
 
 ## Private Service Security
@@ -47,9 +52,7 @@ sudo apt install redis-server libredis-perl libhiredis-dev
   Perl clients, etc.) do not read opensrf.xml and won't know the key.
 
 ### Other Options
-* Run public and private Redis instances and require the client to
-  know which bus to send each request down.  Standalone clients will
-  only connect to the "public" bus.
+
 * Redis supports authentication and access control lists if we want
   to beef up the security.
 
