@@ -9,6 +9,7 @@ use OpenSRF::Utils::Logger qw/$logger/;
 use OpenSRF::Transport::Redis::Message;
 
 my $OSRF_MSG_CHUNK_SIZE = 1024;
+my $END_OF_TEXT_CHAR = "\x{03}"; # ETX / End of Text
 
 sub new {
     my ($class, %params) = @_;
@@ -77,7 +78,7 @@ sub send {
 
         } else { 
             # EOM -- Append the final null byte
-            $self->redis->rpush($msg->to, $chunk . "\0");
+            $self->redis->rpush($msg->to, $chunk . $END_OF_TEXT_CHAR);
             last;
         }
     }
@@ -171,7 +172,7 @@ sub recv {
 
         $json .= $packet->[1]; # [sender, text]
 
-        if (substr($json, length($json) - 1, 1) eq "\0") { # EOM
+        if (substr($json, length($json) - 1, 1) eq $END_OF_TEXT_CHAR) { # EOM
             chop($json); # remove the trailing null byte
             last;
         }
