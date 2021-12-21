@@ -434,7 +434,7 @@ static int prefork_child_process_request( prefork_child* child, char* data ) {
 	}
 
 	// Construct the message from the xml.
-	transport_message* msg = new_message_from_xml( data );
+	transport_message* msg = new_message_from_json( data );
 
 	// Respond to the transport message.  This is where method calls are buried.
 	osrfAppSession* session = osrf_stack_transport_handler( msg, child->appname );
@@ -909,8 +909,8 @@ static void prefork_run( prefork_simple* forker ) {
 				continue;
 			}
 
-			message_prepare_xml( cur_msg );
-			const char* msg_data = cur_msg->msg_xml;
+			message_prepare_json( cur_msg );
+			const char* msg_data = cur_msg->msg_json;
 			if( ! msg_data || ! *msg_data ) {
 				osrfLogWarning( OSRF_LOG_MARK, "Received % message from %s, thread %",
 					(msg_data ? "empty" : "NULL"), cur_msg->sender, cur_msg->thread );
@@ -999,7 +999,7 @@ static void prefork_run( prefork_simple* forker ) {
 				osrfLogInternal( OSRF_LOG_MARK, "Writing to child fd %d",
 					cur_child->write_data_fd );
 
-				const char* msg_data = cur_msg->msg_xml;
+				const char* msg_data = cur_msg->msg_json;
 				int written = write( cur_child->write_data_fd, msg_data, strlen( msg_data ) + 1 );
 				if( written < 0 ) {
 					// This child appears to be dead or unusable.  Discard it.
@@ -1034,7 +1034,7 @@ static void prefork_run( prefork_simple* forker ) {
 						osrfLogDebug( OSRF_LOG_MARK, "Writing to new child fd %d : pid %d",
 							new_child->write_data_fd, new_child->pid );
 
-						const char* msg_data = cur_msg->msg_xml;
+						const char* msg_data = cur_msg->msg_json;
 						int written = write(
 							new_child->write_data_fd, msg_data, strlen( msg_data ) + 1 );
 						if( written < 0 ) {

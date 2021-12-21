@@ -10,13 +10,17 @@
 */
 
 #include <time.h>
-#include <opensrf/transport_session.h>
+#include <hiredis.h>
+#include <opensrf/transport_message.h>
 #include <opensrf/utils.h>
 #include <opensrf/log.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+#define OSRF_MSG_CHUNK_SIZE = 1024;
+#define END_OF_TEXT_CHAR = "\x03";
 
 struct message_list_struct;
 
@@ -29,18 +33,18 @@ struct message_list_struct;
 struct transport_client_struct {
 	transport_message* msg_q_head;   /**< Head of message queue */
 	transport_message* msg_q_tail;   /**< Tail of message queue */
-	transport_session* session;      /**< Manages lower-level message processing */
 	int error;                       /**< Boolean: true if an error has occurred */
+    int port;
 	char* host;                      /**< Domain name or IP address of the Jabber server */
-	char* xmpp_id;                   /**< Jabber ID used for outgoing messages */
+    char* unix_path;
+	char* bus_id;                   /**< Jabber ID used for outgoing messages */
+    redisContext* bus;
 };
 typedef struct transport_client_struct transport_client;
 
-transport_client* client_init( const char* server, int port, const char* unix_path, int component );
+transport_client* client_init(const char* server, int port, const char* unix_path);
 
-int client_connect( transport_client* client, 
-		const char* username, const char* password, const char* resource,
-		int connect_timeout, enum TRANSPORT_AUTH_TYPE auth_type );
+int client_connect(transport_client* client, const char* bus_name);
 
 int client_disconnect( transport_client* client );
 
@@ -53,8 +57,6 @@ int client_send_message( transport_client* client, transport_message* msg );
 int client_connected( const transport_client* client );
 
 transport_message* client_recv( transport_client* client, int timeout );
-
-int client_sock_fd( transport_client* client );
 
 #ifdef __cplusplus
 }

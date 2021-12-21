@@ -1,76 +1,8 @@
 #include <opensrf/transport_client.h>
 
-/**
-	@file transport_client.c
-	@brief Collection of routines for sending and receiving single messages over Jabber.
-
-	These functions form an API built on top of the transport_session API.  They serve
-	two main purposes:
-	- They remember a Jabber ID to use when sending messages.
-	- They maintain a queue of input messages that the calling code can get one at a time.
-*/
-
 static void client_message_handler( void* client, transport_message* msg );
 
-//int main( int argc, char** argv );
-
-/*
-int main( int argc, char** argv ) {
-
-	transport_message* recv;
-	transport_message* send;
-
-	transport_client* client = client_init( "spacely.georgialibraries.org", 5222 );
-
-	// try to connect, allow 15 second connect timeout
-	if( client_connect( client, "admin", "asdfjkjk", "system", 15 ) ) {
-		printf("Connected...\n");
-	} else {
-		printf( "NOT Connected...\n" ); exit(99);
-	}
-
-	while( (recv = client_recv( client, -1 )) ) {
-
-		if( recv->body ) {
-			int len = strlen(recv->body);
-			char buf[len + 20];
-			osrf_clearbuf( buf, 0, sizeof(buf));
-			sprintf( buf, "Echoing...%s", recv->body );
-			send = message_init( buf, "Echoing Stuff", "12345", recv->sender, "" );
-		} else {
-			send = message_init( " * ECHOING * ", "Echoing Stuff", "12345", recv->sender, "" );
-		}
-
-		if( send == NULL ) { printf("something's wrong"); }
-		client_send_message( client, send );
-
-		message_free( send );
-		message_free( recv );
-	}
-
-	printf( "ended recv loop\n" );
-
-	return 0;
-
-}
-*/
-
-
-/**
-	@brief Allocate and initialize a transport_client.
-	@param server Domain name where the Jabber server resides.
-	@param port Port used for connecting to Jabber (0 if using UNIX domain socket).
-	@param unix_path Name of Jabber's socket in file system (if using UNIX domain socket).
-	@param component Boolean; true if we're a Jabber component.
-	@return A pointer to a newly created transport_client.
-
-	Create a transport_client with a transport_session and an empty message queue (but don't
-	open a connection yet).  Install a callback function in the transport_session to enqueue
-	incoming messages.
-
-	The calling code is responsible for freeing the transport_client by calling client_free().
-*/
-transport_client* client_init( const char* server, int port, const char* unix_path, int component ) {
+transport_client* client_init(const char* server, int port, const char* unix_path) {
 
 	if(server == NULL) return NULL;
 
@@ -80,117 +12,101 @@ transport_client* client_init( const char* server, int port, const char* unix_pa
 	/* start with an empty message queue */
 	client->msg_q_head = NULL;
 	client->msg_q_tail = NULL;
+	client->bus = NULL;
+	client->bus_id = NULL;
 
-	/* build the session */
-	client->session = init_transport( server, port, unix_path, client, component );
+    client->port = port;
+    client->host = server ? strdup(server) : NULL;
+    client->unix_path = unix_path ? strdup(unix_path) : NULL;
 
 	client->session->message_callback = client_message_handler;
 	client->error = 0;
-	client->host = strdup(server);
-	client->xmpp_id = NULL;
 
 	return client;
 }
 
+int client_connect(transport_client* client, const char* bus_name) {
 
-/**
-	@brief Open a Jabber session for a transport_client.
-	@param client Pointer to the transport_client.
-	@param username Jabber user name.
-	@param password Password for the Jabber logon.
-	@param resource Resource name for the Jabber logon.
-	@param connect_timeout How many seconds to wait for the connection to open.
-	@param auth_type An enum: either AUTH_PLAIN or AUTH_DIGEST (see notes).
-	@return 1 if successful, or 0 upon error.
-
-	Besides opening the Jabber session, create a Jabber ID for future use.
-
-	If @a connect_timeout is -1, wait indefinitely for the Jabber server to respond.  If
-	@a connect_timeout is zero, don't wait at all.  If @a timeout is positive, wait that
-	number of seconds before timing out.  If @a connect_timeout has a negative value other
-	than -1, the results are not well defined.
-
-	The value of @a connect_timeout applies to each of two stages in the logon procedure.
-	Hence the logon may take up to twice the amount of time indicated.
-
-	If we connect as a Jabber component, we send the password as an SHA1 hash.  Otherwise
-	we look at the @a auth_type.  If it's AUTH_PLAIN, we send the password as plaintext; if
-	it's AUTH_DIGEST, we send it as a hash.
- */
-int client_connect( transport_client* client,
-		const char* username, const char* password, const char* resource,
-		int connect_timeout, enum TRANSPORT_AUTH_TYPE  auth_type ) {
-	if( client == NULL )
-		return 0;
+	if (client == NULL || bus_name == NULL) { return 0; }
 
 	// Create and store a Jabber ID
-	if( client->xmpp_id )
-		free( client->xmpp_id );
-	client->xmpp_id = va_list_to_string( "%s@%s/%s", username, client->host, resource );
+	if (client->bus_id) { free(client->bus_id); }
 
-	// Open a transport_session
-	return session_connect( client->session, username,
-			password, resource, connect_timeout, auth_type );
+    char junk[256];
+	snprintf(junk, sizeof(junk), 
+        "%f.%d%ld", get_timestamp_millis(), (int) time(NULL), (long) getpid());
+
+    const char* md5 = md5sum(junk);
+
+    size_t len = 14 + strlen(bus_name);
+    char bus_id[len];
+    snprintf(bus_id, len, "%s-%s", bus_name, md5);
+
+	client->bus_id = strdup(bus_id);
+    free(md5);
+
+    osrfLogDebug(OSRF_LOG_MARK, 
+        "Transport client connecting with bus id: %s", client->bus_id);
+
+    if (client->host && client->port) {
+        client->bus = redisConnect(client->host, client->port);
+    } else if (client->unix_path) {
+        client->bus = redisConnectUnix(client->unix_path);
+    }
+
+    return client->bus == NULL ? 0 : 1;
 }
 
-/**
-	@brief Disconnect from the Jabber session.
-	@param client Pointer to the transport_client.
-	@return 0 in all cases.
-
-	If there are any messages still in the queue, they stay there; i.e. we don't free them here.
-*/
-int client_disconnect( transport_client* client ) {
-	if( client == NULL ) { return 0; }
-	return session_disconnect( client->session );
+int client_disconnect(transport_client* client) {
+	if (client == NULL || client->bus == NULL) { return 0; }
+    redisDisconnect(client->bus);
+    client->bus = NULL;
 }
 
-/**
-	@brief Report whether a transport_client is connected.
-	@param client Pointer to the transport_client.
-	@return Boolean: 1 if connected, or 0 if not.
-*/
 int client_connected( const transport_client* client ) {
-	if(client == NULL) return 0;
-	return session_connected( client->session );
+	return (client != NULL && client->bus != NULL);
 }
 
-/**
-	@brief Send a transport message to the current destination.
-	@param client Pointer to a transport_client.
-	@param msg Pointer to the transport_message to be sent.
-	@return 0 if successful, or -1 if not.
+int client_send_message(transport_client* client, transport_message* msg) {
+	if (client == NULL || client->error) { return -1; }
 
-	Translate the transport_message into XML and send it to Jabber, using the previously
-	stored Jabber ID for the sender.
-*/
-int client_send_message( transport_client* client, transport_message* msg ) {
-	if( client == NULL || client->error )
-		return -1;
-	if( msg->sender )
-		free( msg->sender );
-	msg->sender = strdup(client->xmpp_id);
-	return session_send_msg( client->session, msg );
+	if (msg->sender) { free(msg->sender); }
+	msg->sender = strdup(client->bus_id);
+
+    message_prepare_json(msg);
+
+    // LOOP
+    // OSRF_MSG_CHUNK_SIZE
+    int offset = 0;
+    int msg_len = strlen(msg->msg_json);
+
+    while (offset < msg_len) {
+
+        char* chunk[OSRF_MSG_CHUNK_SIZE + 1];
+        snprintf(chunk, OSRF_MSG_CHUNK_SIZE + 1, msg->msg_json + offset);
+
+        offset += OSRF_MSG_CHUNK_SIZE;
+
+        redisReply *reply;
+        if (offset < msg_len) {
+            reply = redisCommand(client->bus, "RPUSH %s %s", msg->recipient, chunk);
+        } else {
+            // Final chunk. Append ETX / End Of Text character
+            reply = redisCommand(client->bus, "RPUSH %s %s\x03", msg->recipient, chunk);
+        }
+
+        if (!reply || reply->type == REDIS_REPLY_ERROR) {
+            char* err = reply == NULL ? "" : reply->str;
+            osrfLogError(OSRF_LOG_MARK, "Error in client_send_message(): %", err);
+            return -1;
+        }
+    }
+    
+    return 1;
 }
 
-/**
-	@brief Fetch an input message, if one is available.
-	@param client Pointer to a transport_client.
-	@param timeout How long to wait for a message to arrive, in seconds (see remarks).
-	@return A pointer to a transport_message if successful, or NULL if not.
-
-	If there is a message already in the queue, return it immediately.  Otherwise read any
-	available messages from the transport_session (subject to a timeout), and return the
-	first one.
-
-	If the value of @a timeout is -1, then there is no time limit -- wait indefinitely until a
-	message arrives (or we error out for other reasons).  If the value of @a timeout is zero,
-	don't wait at all.
-
-	The calling code is responsible for freeing the transport_message by calling message_free().
-*/
 transport_message* client_recv( transport_client* client, int timeout ) {
-	if( client == NULL ) { return NULL; }
+	if (client == NULL || client->bus == NULL) { return NULL; }
 
 	int error = 0;  /* boolean */
 

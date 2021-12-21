@@ -494,7 +494,7 @@ int message_prepare_xml( transport_message* msg ) {
 int message_prepare_json(transport_message* msg) {
 
     if (!msg) { return 0; }
-    if (msg->msg_json ) { return 1; }   /* already done */
+    if (msg->msg_json) { return 1; }   /* already done */
 
     jsonObject* json_hash = jsonNewObject(NULL);
     jsonObjectSetKey(json_hash, "to", jsonNewObject(msg->recipient));
