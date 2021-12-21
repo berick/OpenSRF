@@ -24,13 +24,14 @@ int main( int argc, char* argv[] ) {
     char* piddir  = NULL;
     char* action  = NULL;
     char* service = NULL;
+    char* service_key = NULL;
     opterr = 0;
 
 	/* values must be strdup'ed because init_proc_title / 
      * set_proc_title are evil and overwrite the argv memory */
 
     int c;
-    while ((c = getopt(argc, argv, "h:c:x:p:a:s:")) != -1) {
+    while ((c = getopt(argc, argv, "h:c:x:p:a:s:k:")) != -1) {
         switch (c) {
             case 'h':
                 host = strdup(optarg);
@@ -50,15 +51,17 @@ int main( int argc, char* argv[] ) {
             case 's':
                 service = strdup(optarg);
                 break;
+            case 'k':
+                service_key = strdup(optarg);
+                break;
             default:
                 continue;
         }
     }
 
-
-    if (!(host && config && context && piddir && action)) {
+    if (!(host && config && context && piddir && action && service_key)) {
 		fprintf(stderr, "Usage: %s -h <host> -c <config> "
-            "-x <config_context> -p <piddir>\n", argv[0]);
+            "-x <config_context> -p <piddir> -k <service_key> \n", argv[0]);
 		return 1;
 	}
 
@@ -72,7 +75,7 @@ int main( int argc, char* argv[] ) {
     }
 
     int ret = osrf_system_service_ctrl(
-        host, config, context, piddir, action, service);
+        host, config, context, piddir, action, service, service_key);
 
 	if (ret != 0) {
 		osrfLogError(

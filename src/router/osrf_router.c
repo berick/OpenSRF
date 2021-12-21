@@ -513,7 +513,7 @@ static transport_message* osrfRouterClassHandleBounce( osrfRouter* router,
 			transport_message* error = message_init(
 				node->lastMessage->body, node->lastMessage->subject,
 				node->lastMessage->thread, node->lastMessage->router_from,
-				node->lastMessage->recipient );
+				node->lastMessage->recipient, NULL );
 			message_set_osrf_xid(error, node->lastMessage->osrf_xid);
 			set_msg_error( error, "cancel", 501 );
 
@@ -534,7 +534,7 @@ static transport_message* osrfRouterClassHandleBounce( osrfRouter* router,
 			osrfLogDebug( OSRF_LOG_MARK, "Cloning lastMessage so next node can send it");
 			lastSent = message_init( node->lastMessage->body,
 				node->lastMessage->subject, node->lastMessage->thread, "",
-				node->lastMessage->router_from );
+				node->lastMessage->router_from, NULL );
 			message_set_router_info( lastSent, node->lastMessage->router_from,
 				NULL, NULL, NULL, 0 );
 			message_set_osrf_xid( lastSent, node->lastMessage->osrf_xid );
@@ -576,7 +576,7 @@ static void osrfRouterClassHandleMessage(
 
 		// Build a transport message
 		transport_message* new_msg = message_init( msg->body,
-				msg->subject, msg->thread, node->remoteId, msg->sender );
+				msg->subject, msg->thread, node->remoteId, msg->sender, NULL );
 		message_set_router_info( new_msg, msg->sender, NULL, NULL, NULL, 0 );
 		message_set_osrf_xid( new_msg, msg->osrf_xid );
 
@@ -857,7 +857,8 @@ static void osrfRouterRespondConnect( osrfRouter* router, const transport_messag
 		"",             // no subject
 		msg->thread,    // same thread
 		msg->sender,    // destination (client's Jabber ID)
-		""              // don't send our address; client already has it
+		"",             // don't send our address; client already has it
+        NULL
 	);
 	free( data );
 
@@ -1035,7 +1036,7 @@ static void osrfRouterHandleMethodNFound( osrfRouter* router,
 
 	// Wrap the JSON up in a transport_message
 	transport_message* tresponse = message_init(
-			data, "", msg->thread, msg->sender, msg->recipient );
+			data, "", msg->thread, msg->sender, msg->recipient, NULL );
 	free(data);
 
 	// Send it
@@ -1070,7 +1071,7 @@ static void osrfRouterSendAppResponse( osrfRouter* router, const transport_messa
 		osrfLogDebug( OSRF_LOG_MARK,  "Responding to client app request with data: \n%s\n", data );
 
 		transport_message* tresponse = message_init(
-				data, "", msg->thread, msg->sender, msg->recipient );
+				data, "", msg->thread, msg->sender, msg->recipient, NULL );
 		free(data);
 
 		client_send_message(router->connection, tresponse );
@@ -1085,7 +1086,7 @@ static void osrfRouterSendAppResponse( osrfRouter* router, const transport_messa
 	osrfMessageFree(status);
 
 	transport_message* sresponse = message_init(
-			statusdata, "", msg->thread, msg->sender, msg->recipient );
+			statusdata, "", msg->thread, msg->sender, msg->recipient, NULL );
 	free(statusdata);
 
 	client_send_message(router->connection, sresponse );

@@ -254,13 +254,13 @@ static void osrf_prefork_send_router_registration(
     if (unregister) {
 
 	    osrfLogInfo( OSRF_LOG_MARK, "%s un-registering with router %s", appname, jid );
-	    msg = message_init( "unregistering", NULL, NULL, jid, NULL );
+	    msg = message_init( "unregistering", NULL, NULL, jid, NULL, NULL );
 	    message_set_router_info( msg, NULL, NULL, appname, "unregister", 0 );
 
     } else {
 
 	    osrfLogInfo( OSRF_LOG_MARK, "%s registering with router %s", appname, jid );
-	    msg = message_init( "registering", NULL, NULL, jid, NULL );
+	    msg = message_init( "registering", NULL, NULL, jid, NULL, NULL );
 	    message_set_router_info( msg, NULL, NULL, appname, "register", 0 );
     }
 
@@ -934,7 +934,8 @@ static void prefork_run( prefork_simple* forker ) {
 						OSRF_STATUS_SERVICEUNAVAILABLE );
 					char *data = osrf_message_serialize( err );
 					osrfMessageFree( err );
-					transport_message* tresponse = message_init( data, "", cur_msg->thread, cur_msg->router_from, cur_msg->recipient );
+					transport_message* tresponse = message_init(data, "", 
+                        cur_msg->thread, cur_msg->router_from, cur_msg->recipient, cur_msg->service_key );
 					message_set_osrf_xid(tresponse, cur_msg->osrf_xid);
 					free( data );
 					transport_client* client = osrfSystemGetTransportClient();

@@ -25,6 +25,8 @@
 
 osrfStringArray* log_protect_arr = NULL;
 
+static char* private_service_key = NULL;
+
 /** Pointer to the global transport_client; i.e. our connection to Jabber. */
 static transport_client* osrfGlobalTransportClient = NULL;
 
@@ -48,6 +50,10 @@ static int stop_service(const char* path, const char* service);
 */
 transport_client* osrfSystemGetTransportClient( void ) {
 	return osrfGlobalTransportClient;
+}
+
+char* osrfSystemGetServiceKey(void) {
+    return private_service_key;
 }
 
 /**
@@ -182,7 +188,9 @@ static int stop_service(const char* piddir, const char* service) {
 int osrf_system_service_ctrl(  
         const char* hostname, const char* config, 
         const char* context, const char* piddir, 
-        const char* action, const char* service) {
+        const char* action, const char* service, const char* service_key) {
+
+    private_service_key = service_key;
     
     // Load the conguration, open the log, open a connection to Jabber
     if (!osrfSystemBootstrapClientResc(config, context, "c_launcher")) {

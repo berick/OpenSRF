@@ -962,7 +962,7 @@ static int router_query_servers( const char* router_server ) {
 	snprintf(rbuf, sizeof(rbuf), router_text, router_server );
 		
 	transport_message* send = 
-		message_init( "servers", NULL, NULL, rbuf, NULL );
+		message_init( "servers", NULL, NULL, rbuf, NULL, NULL );
 	message_set_router_info( send, NULL, NULL, NULL, "query", 0 );
 
 	client_send_message( client, send );

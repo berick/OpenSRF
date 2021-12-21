@@ -449,7 +449,7 @@ static void relay_stdin_message(const char* msg_string) {
         "WS relaying inbound message: %s", msg_body);
 
     transport_message *tmsg = message_init(
-        msg_body, NULL, thread, recipient, NULL);
+        msg_body, NULL, thread, recipient, NULL, NULL);
 
     free(recipient);
 

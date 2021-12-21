@@ -723,7 +723,7 @@ static void endElementHandler( void *session, const xmlChar *name) {
 				OSRF_BUFFER_C_STR( ses->subject_buffer ),
 				OSRF_BUFFER_C_STR( ses->thread_buffer ),
 				OSRF_BUFFER_C_STR( ses->recipient_buffer ),
-				OSRF_BUFFER_C_STR( ses->from_buffer ) );
+				OSRF_BUFFER_C_STR( ses->from_buffer ), NULL );
 
 			message_set_router_info( msg,
 				ses->router_from_buffer->buf,

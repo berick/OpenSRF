@@ -54,12 +54,14 @@ struct transport_message_struct {
 	int error_code;        /**< Value of the "code" attribute of &lt;error&gt;. */
 	int broadcast;         /**< Value of the "broadcast" attribute in the message element. */
 	char* msg_xml;         /**< The entire message as XML, complete with entity encoding. */
+    char* service_key;     /**< Private service key. */
 	struct transport_message_struct* next;
 };
 typedef struct transport_message_struct transport_message;
 
 transport_message* message_init( const char* body, const char* subject,
-		const char* thread, const char* recipient, const char* sender );
+		const char* thread, const char* recipient, const char* sender,
+        const char* service_key);
 
 transport_message* new_message_from_xml( const char* msg_xml );
 

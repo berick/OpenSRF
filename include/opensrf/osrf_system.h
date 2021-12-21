@@ -30,9 +30,11 @@ int osrfSystemBootstrap( const char* hostname, const char* configfile,
 int osrf_system_service_ctrl(
     const char* host,    const char* config,
     const char* context, const char* piddir, 
-    const char* action,  const char* service);
+    const char* action,  const char* service, const char* service_key);
 
 transport_client* osrfSystemGetTransportClient( void );
+
+char* osrfSystemGetServiceKey(void);
 
 int osrf_system_disconnect_client();
 

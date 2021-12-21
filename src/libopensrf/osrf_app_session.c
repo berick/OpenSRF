@@ -1168,8 +1168,12 @@ int osrfSendChunkedResult(
 	about it.
 */
 int osrfSendTransportPayload( osrfAppSession* session, const char* payload ) {
+
+    char* service_key = 
+        session->type == OSRF_SESSION_CLIENT ? osrfSystemGetServiceKey() : "";
+
 	transport_message* t_msg = message_init(
-		payload, "", session->session_id, session->remote_id, NULL );
+		payload, "", session->session_id, session->remote_id, NULL, service_key );
 	message_set_osrf_xid( t_msg, osrfLogGetXid() );
 
 	int retval = client_send_message( session->transport_handle, t_msg );

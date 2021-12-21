@@ -25,8 +25,10 @@
 
 	The calling code is responsible for freeing the transport_message by calling message_free().
 */
+
 transport_message* message_init( const char* body, const char* subject,
-		const char* thread, const char* recipient, const char* sender ) {
+		const char* thread, const char* recipient, const char* sender, 
+        const char* service_key ) {
 
 	transport_message* msg = safe_malloc( sizeof(transport_message) );
 
@@ -35,22 +37,25 @@ transport_message* message_init( const char* body, const char* subject,
 	if( subject     == NULL ) { subject    = ""; }
 	if( sender      == NULL ) { sender     = ""; }
 	if( recipient   == NULL ) { recipient  = ""; }
+	if( service_key == NULL ) { service_key  = ""; }
 
 	msg->body       = strdup(body);
 	msg->thread     = strdup(thread);
 	msg->subject    = strdup(subject);
 	msg->recipient  = strdup(recipient);
 	msg->sender     = strdup(sender);
+	msg->service_key  = strdup(service_key);
 
 	if( msg->body        == NULL || msg->thread    == NULL  ||
 			msg->subject == NULL || msg->recipient == NULL  ||
-			msg->sender  == NULL ) {
+			msg->sender  == NULL || msg->service_key == NULL ) {
 
 		osrfLogError(OSRF_LOG_MARK, "message_init(): Out of Memory" );
 		free( msg->body );
 		free( msg->thread );
 		free( msg->subject );
 		free( msg->recipient );
+		free( msg->service_key );
 		free( msg->sender );
 		free( msg );
 		return NULL;
@@ -300,6 +305,7 @@ int message_free( transport_message* msg ){
 	free(msg->thread);
 	free(msg->subject);
 	free(msg->recipient);
+	free(msg->service_key);
 	free(msg->sender);
 	free(msg->router_from);
 	free(msg->router_to);
