@@ -334,8 +334,6 @@ sub do_init {
     # they would not have access to the opensrf.settings service.
     $opt_private_key = $sclient->config_value('private_key') || '';
 
-    $C_COMMAND .= " -k $opt_private_key";                                      
-
     # disconnect the top-level network handle
     OpenSRF::Transport::PeerHandle->retrieve->disconnect;
 
@@ -408,7 +406,7 @@ sub do_start {
         my ($svc) = grep { $_->{service} eq $service } @nonperl_services;
         if ($svc) {
             if ($svc->{lang} =~ /c/i) {
-                system("$C_COMMAND -a start -s $service");
+                system("$C_COMMAND -a start -s $service -k $opt_private_key"); 
                 return;
             }
         }
