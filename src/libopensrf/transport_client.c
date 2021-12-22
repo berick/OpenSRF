@@ -95,14 +95,160 @@ int client_send_message(transport_client* client, transport_message* msg) {
             reply = redisCommand(client->bus, "RPUSH %s %s\x03", msg->recipient, chunk);
         }
 
+        if (handle_redis_error(reply)) { return -1; }
+
         if (!reply || reply->type == REDIS_REPLY_ERROR) {
             char* err = reply == NULL ? "" : reply->str;
             osrfLogError(OSRF_LOG_MARK, "Error in client_send_message(): %", err);
             return -1;
         }
+
+        freeReplyObject(reply);
     }
     
     return 1;
+}
+
+// Returns true if if the reply was NULL or an error.
+// If the reply is an error, the reply is FREEd.
+int handle_redis_error(redisReply* reply) {
+
+    if (reply == NULL || reply->type == REDIS_REPLY_ERROR) {
+        char* err = reply == NULL ? "" : reply->str;
+        osrfLogError(OSRF_LOG_MARK, "Error in redisCommand(): %", err);
+        freeReplyObject(reply);
+        return 1;
+    }
+
+    return 0;
+}
+
+/*
+ * Returns at most one allocated char* pulled from the bus or NULL 
+ * if the pop times out or is interrupted.
+ *
+ * The string will be valid JSON string, a partial JSON string, or
+ * a message terminator chararcter.
+ */
+char* recv_one_chunk(transport_client* client, char* sent_to, int timeout) {
+	if (client == NULL || client->bus == NULL) { return NULL; }
+
+    redisReply* reply = NULL;
+
+    if (timeout == 0) { // Non-blocking list pop
+
+        reply = redisCommand("LPOP %s", sent_to);
+        if (handle_redis_error(reply)) { return NULL; }
+
+    } else {
+        
+        if (timeout < 0) { // Block indefinitely
+
+            reply = redisCommand("BLPOP %s 0", sent_to);
+            if (handle_redis_error(reply)) { return NULL; }
+
+        } else { // Block up to timeout seconds
+
+            reply = redisCommand("BLPOP %s %d", sent_to, timeout);
+            if (handle_redis_error(reply)) { return NULL; }
+        }
+    }
+
+    char* json = NULL;
+    if (reply->type == REDIS_REPLY_STRING) { // LPOP
+        json = strdup(reply->str);
+
+    } else if (reply->type == REDIS_REPLY_ARRAY) { // BLPOP
+
+        // BLPOP returns [list_name, popped_value]
+        if (reply->elements == 2) {
+            json = reply->element[1]->str; 
+        } else {
+            osrfLogInternal(OSRF_LOG_MARK, 
+                "No response returned within timeout: %d", timeout);
+        }
+    }
+
+    freeReplyObject(reply);
+
+    return json;
+}
+
+/// Returns at most one JSON value pulled from the bus or nULL if
+/// the list pop times out or the pop is interrupted by a signal.
+jsonObject* recv_one_value(transport_client* client, char* sent_to, int timeout) {
+
+    size_t len = 0;
+    growing_buffer *gbuf = buffer_init(OSRF_MSG_CHUNK_SIZE);
+
+    while (1) {
+        char* chunk = recv_one_chunk(client, sent_to, timeout);
+
+        if (chunk == NULL) {
+            // Receive timed out or interrupted
+            buffer_free(buf);
+            return NULL;
+        }
+
+        len = buffer_add(gbuf, chunk);
+        free(chunk);
+
+        if (gbuf[len - 1] == END_OF_TEXT_CHAR) {
+            // Each JSON string will be terminated by the end-of-text
+            // character and it will always be the last character in
+            // any bus response.
+            break;
+        }
+    }
+
+    // Replace the end-of-text char with an end-of string for JSON parsing.
+    gbuf->buf[len - 1] = '\0';
+
+    jsonObject* obj = jsonParse(gbuf->buf);
+
+    if (obj == NULL) {
+        osrfLogWarn(OSRF_LOG_MARK, "Error parsing JSON: %s", gbuf->buf);
+    }
+
+    buffer_free(buf);
+
+    return obj;
+}
+
+/**
+ * Returns at most one jsonObject returned from the data bus.
+ *
+ * Keeps trying until a value is returned or the timeout is exceeded.
+ */
+jsonObject* recv_json_value(transport_client* client, char* sent_to, int timeout) {
+
+    if (timeout == 0) {
+        return recv_one_value(client, sent_to, 0);
+
+    } else if (timeout < 0) {
+        // Keep trying until we have a result.
+
+        while (1) {
+            jsonObject* obj = recv_one_value(client, sent_to, timeout);
+            if (obj != NULL) { return obj; }
+        }
+    }
+
+    time_t seconds = (time_t) timeout;
+
+    while (seconds > 0) {
+
+        time_t now = time(NULL);
+        jsonObject* obj = recv_one_value(client, sent_to, timeout);
+
+        if (obj == NULL) {
+            seconds -= now;
+        } else {
+            return obj;
+        }
+    }
+
+    return NULL;
 }
 
 transport_message* client_recv( transport_client* client, int timeout ) {
@@ -214,10 +360,7 @@ static void client_message_handler( void* client, transport_message* msg ){
 	@return 1 if successful, or 0 if not.  The only error condition is if @a client is NULL.
 */
 int client_free( transport_client* client ) {
-	if(client == NULL)
-		return 0;
-	session_free( client->session );
-	client->session = NULL;
+	if (client == NULL) { return 0; }
 	return client_discard( client );
 }
 
@@ -250,10 +393,3 @@ int client_discard( transport_client* client ) {
 	return 1;
 }
 
-int client_sock_fd( transport_client* client )
-{
-	if( !client )
-		return 0;
-	else
-		return client->session->sock_id;
-}
