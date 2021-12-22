@@ -11,16 +11,17 @@
 
 #include <time.h>
 #include <hiredis.h>
-#include <opensrf/transport_message.h>
 #include <opensrf/utils.h>
 #include <opensrf/log.h>
+#include <opensrf/osrf_json.h>
+#include <opensrf/transport_message.h>
+
+#define OSRF_MSG_BUS_CHUNK_SIZE = 1024;
+#define END_OF_TEXT_CHAR = "\x03";
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-#define OSRF_MSG_CHUNK_SIZE = 1024;
-#define END_OF_TEXT_CHAR = "\x03";
 
 struct message_list_struct;
 
@@ -31,8 +32,6 @@ struct message_list_struct;
 	a Jabber ID for outgoing messages.
 */
 struct transport_client_struct {
-	transport_message* msg_q_head;   /**< Head of message queue */
-	transport_message* msg_q_tail;   /**< Tail of message queue */
 	int error;                       /**< Boolean: true if an error has occurred */
     int port;
 	char* host;                      /**< Domain name or IP address of the Jabber server */
@@ -46,17 +45,20 @@ transport_client* client_init(const char* server, int port, const char* unix_pat
 
 int client_connect(transport_client* client, const char* bus_name);
 
-int client_disconnect( transport_client* client );
+int client_disconnect(transport_client* client);
 
-int client_free( transport_client* client );
+int client_free(transport_client* client);
 
-int client_discard( transport_client* client );
+int client_discard(transport_client* client);
 
-int client_send_message( transport_client* client, transport_message* msg );
+int client_send_message(transport_client* client, transport_message* msg);
 
-int client_connected( const transport_client* client );
+int client_connected(const transport_client* client);
 
-transport_message* client_recv( transport_client* client, int timeout );
+char* recv_one_chunk(transport_client* client, char* sent_to, int timeout);
+jsonObject* recv_one_value(transport_client* client, char* sent_to, int timeout);
+jsonObject* recv_json_value(transport_client* client, char* sent_to, int timeout);
+transport_message* client_recv(transport_client* client, char* sent_to, int timeout);
 
 #ifdef __cplusplus
 }

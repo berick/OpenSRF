@@ -190,7 +190,9 @@ int osrf_system_service_ctrl(
         const char* context, const char* piddir, 
         const char* action, const char* service, const char* service_key) {
 
-    private_service_key = service_key;
+    if (service_key != NULL) {
+        private_service_key = strdup(service_key);
+    }
     
     // Load the conguration, open the log, open a connection to Jabber
     if (!osrfSystemBootstrapClientResc(config, context, "c_launcher")) {
@@ -460,7 +462,8 @@ int osrfSystemBootstrapClientResc( const char* config_file,
 
 	osrfLogInfo( OSRF_LOG_MARK, "Bootstrapping system with domain %s, port %d, and unixpath %s",
 		domain, iport, unixpath ? unixpath : "(none)" );
-	transport_client* client = client_init( domain, iport, unixpath, 0 );
+
+	transport_client* client = client_init(domain, iport, unixpath);
 
 	char host[HOST_NAME_MAX + 1] = "";
 	gethostname(host, sizeof(host) );
@@ -477,7 +480,7 @@ int osrfSystemBootstrapClientResc( const char* config_file,
 	buf[0] = '\0';
 	snprintf(buf, len - 1, "%s_%s_%s_%ld", resource, host, tbuf, (long) getpid() );
 
-	if(client_connect( client, username, password, buf, 10, AUTH_DIGEST )) {
+	if (client_connect(client, username, password, buf, 10, AUTH_DIGEST )) {
 		osrfGlobalTransportClient = client;
 	}
 

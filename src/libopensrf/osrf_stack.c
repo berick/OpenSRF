@@ -39,7 +39,7 @@ int osrf_stack_process( transport_client* client, int timeout, int* msg_received
 	if(msg_received) *msg_received = 0;
 
 	// Loop through the available input messages
-	while( (msg = client_recv( client, timeout )) ) {
+	while( (msg = client_recv( client, client->bus_id, timeout )) ) {
 		if(msg_received) *msg_received = 1;
 		osrfLogDebug( OSRF_LOG_MARK, "Received message from transport code from %s", msg->sender );
 		osrf_stack_transport_handler( msg, NULL );

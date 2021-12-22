@@ -10,8 +10,6 @@ transport_client* client_init(const char* server, int port, const char* unix_pat
 	transport_client* client = safe_malloc( sizeof( transport_client) );
 
 	/* start with an empty message queue */
-	client->msg_q_head = NULL;
-	client->msg_q_tail = NULL;
 	client->bus = NULL;
 	client->bus_id = NULL;
 
@@ -76,16 +74,16 @@ int client_send_message(transport_client* client, transport_message* msg) {
     message_prepare_json(msg);
 
     // LOOP
-    // OSRF_MSG_CHUNK_SIZE
+    // OSRF_MSG_BUS_CHUNK_SIZE
     int offset = 0;
     int msg_len = strlen(msg->msg_json);
 
     while (offset < msg_len) {
 
-        char* chunk[OSRF_MSG_CHUNK_SIZE + 1];
-        snprintf(chunk, OSRF_MSG_CHUNK_SIZE + 1, msg->msg_json + offset);
+        char* chunk[OSRF_MSG_BUS_CHUNK_SIZE + 1];
+        snprintf(chunk, OSRF_MSG_BUS_CHUNK_SIZE + 1, msg->msg_json + offset);
 
-        offset += OSRF_MSG_CHUNK_SIZE;
+        offset += OSRF_MSG_BUS_CHUNK_SIZE;
 
         redisReply *reply;
         if (offset < msg_len) {
@@ -179,7 +177,7 @@ char* recv_one_chunk(transport_client* client, char* sent_to, int timeout) {
 jsonObject* recv_one_value(transport_client* client, char* sent_to, int timeout) {
 
     size_t len = 0;
-    growing_buffer *gbuf = buffer_init(OSRF_MSG_CHUNK_SIZE);
+    growing_buffer *gbuf = buffer_init(OSRF_MSG_BUS_CHUNK_SIZE);
 
     while (1) {
         char* chunk = recv_one_chunk(client, sent_to, timeout);
@@ -251,108 +249,21 @@ jsonObject* recv_json_value(transport_client* client, char* sent_to, int timeout
     return NULL;
 }
 
-transport_message* client_recv( transport_client* client, int timeout ) {
+transport_message* client_recv(transport_client* client, char* sent_to, int timeout) {
 	if (client == NULL || client->bus == NULL) { return NULL; }
 
-	int error = 0;  /* boolean */
+    jsonObject* obj = recv_one_value(client, sent_to, timeout);
 
-	if( NULL == client->msg_q_head ) {
+    if (obj == NULL) { return NULL; } // Receive timed out.
 
-		// No message available on the queue?  Try to get a fresh one.
+    char* json = jsonObjectToJSON(obj);
 
-		// When we call session_wait(), it reads a socket for new messages.  When it finds
-		// one, it enqueues it by calling the callback function client_message_handler(),
-		// which we installed in the transport_session when we created the transport_client.
+	transport_message* msg = new_message_from_json(json);
 
-		// Since a single call to session_wait() may not result in the receipt of a complete
-		// message. we call it repeatedly until we get either a message or an error.
-
-		// Alternatively, a single call to session_wait() may result in the receipt of
-		// multiple messages.  That's why we have to enqueue them.
-
-		// The timeout applies to the receipt of a complete message.  For a sufficiently
-		// short timeout, a sufficiently long message, and a sufficiently slow connection,
-		// we could timeout on the first message even though we're still receiving data.
-		
-		// Likewise we could time out while still receiving the second or subsequent message,
-		// return the first message, and resume receiving messages later.
-
-		if( timeout == -1 ) {  /* wait potentially forever for data to arrive */
-
-			int x;
-			do {
-				if( (x = session_wait( client->session, -1 )) ) {
-					osrfLogDebug(OSRF_LOG_MARK, "session_wait returned failure code %d\n", x);
-					error = 1;
-					break;
-				}
-			} while( client->msg_q_head == NULL );
-
-		} else {    /* loop up to 'timeout' seconds waiting for data to arrive  */
-
-			/* This loop assumes that a time_t is denominated in seconds -- not */
-			/* guaranteed by Standard C, but a fair bet for Linux or UNIX       */
-
-			time_t start = time(NULL);
-			time_t remaining = (time_t) timeout;
-
-			int wait_ret;
-			do {
-				if( (wait_ret = session_wait( client->session, (int) remaining)) ) {
-					error = 1;
-					osrfLogDebug(OSRF_LOG_MARK,
-						"session_wait returned failure code %d: setting error=1\n", wait_ret);
-					break;
-				}
-
-				remaining -= time(NULL) - start;
-			} while( NULL == client->msg_q_head && remaining > 0 );
-		}
-	}
-
-	transport_message* msg = NULL;
-
-	if( !error && client->msg_q_head != NULL ) {
-		/* got message(s); dequeue the oldest one */
-		msg = client->msg_q_head;
-		client->msg_q_head = msg->next;
-		msg->next = NULL;  /* shouldn't be necessary; nullify for good hygiene */
-		if( NULL == client->msg_q_head )
-			client->msg_q_tail = NULL;
-	}
+    free(json);
 
 	return msg;
 }
-
-/**
-	@brief Enqueue a newly received transport_message.
-	@param client A pointer to a transport_client, cast to a void pointer.
-	@param msg A new transport message.
-
-	Add a newly arrived input message to the tail of the queue.
-
-	This is a callback function.  The transport_session parses the XML coming in through a
-	socket, accumulating various bits and pieces.  When it sees the end of a message stanza,
-	it packages the bits and pieces into a transport_message that it passes to this function,
-	which enqueues the message for processing.
-*/
-static void client_message_handler( void* client, transport_message* msg ){
-
-	if(client == NULL) return;
-	if(msg == NULL) return;
-
-	transport_client* cli = (transport_client*) client;
-
-	/* add the new message to the tail of the queue */
-	if( NULL == cli->msg_q_head )
-		cli->msg_q_tail = cli->msg_q_head = msg;
-	else {
-		cli->msg_q_tail->next = msg;
-		cli->msg_q_tail = msg;
-	}
-	msg->next = NULL;
-}
-
 
 /**
 	@brief Free a transport_client, along with all resources it owns.
@@ -374,22 +285,15 @@ int client_free( transport_client* client ) {
 	disconnect the parent as well.
  */
 int client_discard( transport_client* client ) {
-	if(client == NULL)
-		return 0;
-	
-	transport_message* current = client->msg_q_head;
-	transport_message* next;
 
-	/* deallocate the list of messages */
-	while( current != NULL ) {
-		next = current->next;
-		message_free( current );
-		current = next;
-	}
+	if (client == NULL) { return 0; }
 
-	free(client->host);
-	free(client->xmpp_id);
-	free( client );
+	if (client->host != NULL) { free(client->host); }
+	if (client->unix_path != NULL) { free(client->unix_path); }
+	if (client->bus_id != NULL) { free(client->bus_id); }
+
+	free(client);
+
 	return 1;
 }
 
