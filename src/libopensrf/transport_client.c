@@ -1,6 +1,6 @@
 #include <opensrf/transport_client.h>
 
-static void client_message_handler( void* client, transport_message* msg );
+static int handle_redis_error(redisReply* reply);
 
 transport_client* client_init(const char* server, int port, const char* unix_path) {
 
@@ -16,8 +16,6 @@ transport_client* client_init(const char* server, int port, const char* unix_pat
     client->port = port;
     client->host = server ? strdup(server) : NULL;
     client->unix_path = unix_path ? strdup(unix_path) : NULL;
-
-	client->session->message_callback = client_message_handler;
 	client->error = 0;
 
 	return client;
@@ -34,7 +32,7 @@ int client_connect(transport_client* client, const char* bus_name) {
 	snprintf(junk, sizeof(junk), 
         "%f.%d%ld", get_timestamp_millis(), (int) time(NULL), (long) getpid());
 
-    const char* md5 = md5sum(junk);
+    char* md5 = md5sum(junk);
 
     size_t len = 14 + strlen(bus_name);
     char bus_id[len];
@@ -57,8 +55,9 @@ int client_connect(transport_client* client, const char* bus_name) {
 
 int client_disconnect(transport_client* client) {
 	if (client == NULL || client->bus == NULL) { return 0; }
-    redisDisconnect(client->bus);
+    redisFree(client->bus);
     client->bus = NULL;
+    return 1;
 }
 
 int client_connected( const transport_client* client ) {
@@ -80,8 +79,9 @@ int client_send_message(transport_client* client, transport_message* msg) {
 
     while (offset < msg_len) {
 
-        char* chunk[OSRF_MSG_BUS_CHUNK_SIZE + 1];
-        snprintf(chunk, OSRF_MSG_BUS_CHUNK_SIZE + 1, msg->msg_json + offset);
+        char chunk[OSRF_MSG_BUS_CHUNK_SIZE + 1];
+        chunk[OSRF_MSG_BUS_CHUNK_SIZE] = '\0';
+        strncpy(chunk, msg->msg_json + offset, OSRF_MSG_BUS_CHUNK_SIZE);
 
         offset += OSRF_MSG_BUS_CHUNK_SIZE;
 
@@ -109,7 +109,7 @@ int client_send_message(transport_client* client, transport_message* msg) {
 
 // Returns true if if the reply was NULL or an error.
 // If the reply is an error, the reply is FREEd.
-int handle_redis_error(redisReply* reply) {
+static int handle_redis_error(redisReply* reply) {
 
     if (reply == NULL || reply->type == REDIS_REPLY_ERROR) {
         char* err = reply == NULL ? "" : reply->str;
@@ -135,19 +135,19 @@ char* recv_one_chunk(transport_client* client, char* sent_to, int timeout) {
 
     if (timeout == 0) { // Non-blocking list pop
 
-        reply = redisCommand("LPOP %s", sent_to);
+        reply = redisCommand(client->bus, "LPOP %s", sent_to);
         if (handle_redis_error(reply)) { return NULL; }
 
     } else {
         
         if (timeout < 0) { // Block indefinitely
 
-            reply = redisCommand("BLPOP %s 0", sent_to);
+            reply = redisCommand(client->bus, "BLPOP %s 0", sent_to);
             if (handle_redis_error(reply)) { return NULL; }
 
         } else { // Block up to timeout seconds
 
-            reply = redisCommand("BLPOP %s %d", sent_to, timeout);
+            reply = redisCommand(client->bus, "BLPOP %s %d", sent_to, timeout);
             if (handle_redis_error(reply)) { return NULL; }
         }
     }
@@ -184,14 +184,14 @@ jsonObject* recv_one_value(transport_client* client, char* sent_to, int timeout)
 
         if (chunk == NULL) {
             // Receive timed out or interrupted
-            buffer_free(buf);
+            buffer_free(gbuf);
             return NULL;
         }
 
         len = buffer_add(gbuf, chunk);
         free(chunk);
 
-        if (gbuf[len - 1] == END_OF_TEXT_CHAR) {
+        if (strcmp(gbuf->buf + len - 1, END_OF_TEXT_CHAR) == 0) {
             // Each JSON string will be terminated by the end-of-text
             // character and it will always be the last character in
             // any bus response.
@@ -205,10 +205,10 @@ jsonObject* recv_one_value(transport_client* client, char* sent_to, int timeout)
     jsonObject* obj = jsonParse(gbuf->buf);
 
     if (obj == NULL) {
-        osrfLogWarn(OSRF_LOG_MARK, "Error parsing JSON: %s", gbuf->buf);
+        osrfLogWarning(OSRF_LOG_MARK, "Error parsing JSON: %s", gbuf->buf);
     }
 
-    buffer_free(buf);
+    buffer_free(gbuf);
 
     return obj;
 }

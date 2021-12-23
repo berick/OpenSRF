@@ -183,16 +183,11 @@ int osrf_prefork_run( const char* appname ) {
 	free( max_backlog_queue );
 	/* --------------------------------------------------- */
 
-	char* resc = va_list_to_string( "%s_listener", appname );
-
 	// Make sure that we haven't already booted
-	if( !osrfSystemBootstrapClientResc( NULL, NULL, resc )) {
+	if( !osrfSystemBootstrapClientResc( NULL, NULL, appname )) {
 		osrfLogError( OSRF_LOG_MARK, "Unable to bootstrap client for osrf_prefork_run()" );
-		free( resc );
 		return -1;
 	}
-
-	free( resc );
 
 	prefork_simple forker;
 
@@ -372,7 +367,6 @@ static int prefork_child_init_hook( prefork_child* child ) {
 
 	// Connect to cache server(s).
 	osrfSystemInitCache();
-	char* resc = va_list_to_string( "%s_drone", child->appname );
 
 	// If we're a source-client, tell the logger now that we're a new process.
 	char* isclient = osrfConfigGetValue( NULL, "/client" );
@@ -385,13 +379,10 @@ static int prefork_child_init_hook( prefork_child* child ) {
 	osrfSystemIgnoreTransportClient();
 
 	// Connect to Jabber
-	if( !osrfSystemBootstrapClientResc( NULL, NULL, resc )) {
+	if( !osrfSystemBootstrapClientResc( NULL, NULL, child->appname )) {
 		osrfLogError( OSRF_LOG_MARK, "Unable to bootstrap client for osrf_prefork_run()" );
-		free( resc );
 		return -1;
 	}
-
-	free( resc );
 
 	// Dynamically call the application-specific initialization function
 	// from a previously loaded shared library.
@@ -425,7 +416,7 @@ static int prefork_child_process_request( prefork_child* child, char* data ) {
 	if( !client_connected( client )) {
 		osrfSystemIgnoreTransportClient();
 		osrfLogWarning( OSRF_LOG_MARK, "Reconnecting child to opensrf after disconnect..." );
-		if( !osrf_system_bootstrap_client( NULL, NULL )) {
+		if( !osrf_system_bootstrap_client( NULL, NULL, child->appname )) {
 			osrfLogError( OSRF_LOG_MARK,
 				"Unable to bootstrap client in prefork_child_process_request()" );
 			sleep( 1 );
@@ -882,11 +873,11 @@ static void prefork_run( prefork_simple* forker ) {
 		if ( backlog_queue_size == 0 ) {
 			// Wait indefinitely for an input message
 			osrfLogDebug( OSRF_LOG_MARK, "Forker going into wait for data..." );
-			cur_msg = client_recv( forker->connection, -1 );
+			cur_msg = client_recv(forker->connection, forker->appname, -1);
 			received_from_network = 1;
 		} else {
 			// See if any messages are immediately available
-			cur_msg = client_recv( forker->connection, 0 );
+			cur_msg = client_recv(forker->connection, forker->appname, 0);
 			if ( cur_msg != NULL )
 				received_from_network = 1;
 		}

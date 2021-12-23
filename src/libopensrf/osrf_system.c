@@ -80,8 +80,9 @@ void osrfSystemIgnoreTransportClient() {
 
 	A thin wrapper for osrfSystemBootstrapClientResc, passing it NULL for a resource.
 */
-int osrf_system_bootstrap_client( char* config_file, char* contextnode ) {
-	return osrfSystemBootstrapClientResc(config_file, contextnode, NULL);
+int osrf_system_bootstrap_client(
+    char* config_file, char* contextnode, const char* appname) {
+	return osrfSystemBootstrapClientResc(config_file, contextnode, appname);
 }
 
 /**
@@ -195,7 +196,7 @@ int osrf_system_service_ctrl(
     }
     
     // Load the conguration, open the log, open a connection to Jabber
-    if (!osrfSystemBootstrapClientResc(config, context, "c_launcher")) {
+    if (!osrfSystemBootstrapClientResc(config, context, "client")) {
         osrfLogError(OSRF_LOG_MARK,
             "Unable to bootstrap for host %s from configuration file %s",
             hostname, config);
@@ -347,7 +348,7 @@ int osrf_system_service_ctrl(
 	- Open a connection to Jabber.
 */
 int osrfSystemBootstrapClientResc( const char* config_file,
-		const char* contextnode, const char* resource ) {
+		const char* contextnode, const char* appname ) {
 
 	int failure = 0;
 
@@ -469,18 +470,9 @@ int osrfSystemBootstrapClientResc( const char* config_file,
 	gethostname(host, sizeof(host) );
 	host[HOST_NAME_MAX] = '\0';
 
-	char tbuf[32];
-	tbuf[0] = '\0';
-	snprintf(tbuf, 32, "%f", get_timestamp_millis());
+	if (appname == NULL) { appname = "client"; }
 
-	if(!resource) resource = "";
-
-	int len = strlen(resource) + 256;
-	char buf[len];
-	buf[0] = '\0';
-	snprintf(buf, len - 1, "%s_%s_%s_%ld", resource, host, tbuf, (long) getpid() );
-
-	if (client_connect(client, username, password, buf, 10, AUTH_DIGEST )) {
+	if (client_connect(client, appname)) {
 		osrfGlobalTransportClient = client;
 	}
 

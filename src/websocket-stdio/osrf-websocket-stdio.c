@@ -71,6 +71,8 @@
 // opportunity, at which point force-close the connection.
 #define SHUTDOWN_MAX_GRACEFUL_SECONDS 120
 
+#define OSRF_REQUEST_TIMEOUT 120
+
 // Incremented with every REQUEST, decremented with every COMPLETE.
 static int requests_in_flight = 0;
 
@@ -100,7 +102,7 @@ static void relay_stdin_message(const char*);
 static char* extract_inbound_messages();
 static void log_request(const char*, osrfMessage*);
 static void read_from_osrf();
-static void read_one_osrf_message(transport_message*);
+static int read_one_osrf_message(transport_message*);
 static int shut_it_down(int);
 static void release_hash_string(char*, void*);
 static int can_shutdown_gracefully();
@@ -133,15 +135,16 @@ int main(int argc, char* argv[]) {
     // (replies returning to the websocket client).
     fd_set fds;
     int stdin_no = fileno(stdin);
-    int osrf_no = osrf_handle->session->sock_id;
-    int maxfd = osrf_no > stdin_no ? osrf_no : stdin_no;
+    //int osrf_no = osrf_handle->session->sock_id;
+    //int maxfd = osrf_no > stdin_no ? osrf_no : stdin_no;
+    int maxfd = stdin_no;
     int sel_resp;
     int shutdown_stat;
 
     while (1) {
 
         FD_ZERO(&fds);
-        FD_SET(osrf_no, &fds);
+        //FD_SET(osrf_no, &fds);
         FD_SET(stdin_no, &fds);
 
         if (shutdown_requested) {
@@ -178,11 +181,35 @@ int main(int argc, char* argv[]) {
 
             if (FD_ISSET(stdin_no, &fds)) {
                 read_from_stdin();
+
+                /*
+                 * BLOCKING read_from_stdin()
+                 *
+                 * WHILE STDIN-HAS-DATA
+                 *   // could be useful if pulling multiple reqs from stdin
+                 *   NONBLOCK read_from_osrf() 
+                 *   NONBLOCK read_from_stdin()
+                 *
+                 * WHILE REQUEST IS IN FLIGHT
+                 *   BLOCKING read_from_osrf() -- UP TO 1 SECOND
+                 *   NONBLOCKING read_from_stdin()
+                 *
+                 *   WHILE STDIN-HAS-DATA
+                 *     NONBLOCK read_from_osrf()
+                 *     NONBLOCK read_from_stdin()
+                 */
+
+
+                // TODO see above.  For now, just block until req is complete.
+                read_from_osrf();
             }
 
+            
+            /*
             if (FD_ISSET(osrf_no, &fds)) {
                 read_from_osrf();
             }
+            */
         }
 
         if (shutdown_requested) {
@@ -251,7 +278,7 @@ static void child_init(int argc, char* argv[]) {
         config_file = argv[1];
     }
 
-    if (!osrf_system_bootstrap_client(config_file, config_ctxt) ) {
+    if (!osrf_system_bootstrap_client(config_file, config_ctxt, "websockets") ) {
         fprintf(stderr, "Cannot boostrap OSRF\n");
         shut_it_down(1);
     }
@@ -568,8 +595,11 @@ static void read_from_osrf() {
     transport_message* tmsg = NULL;
 
     // Double check the socket connection before continuing.
+    /*
     if (!client_connected(osrf_handle) ||
         !socket_connected(osrf_handle->session->sock_id)) {
+        */
+    if (!client_connected(osrf_handle)) {
         osrfLogWarning(OSRF_LOG_MARK,
             "WS: Jabber socket disconnected, exiting");
         shut_it_down(1);
@@ -579,18 +609,20 @@ static void read_from_osrf() {
     // read.  This means we can't return to the main select() loop after
     // each message, because any subsequent messages will get stuck in
     // the opensrf receive queue. Process all available messages.
-    while ( (tmsg = client_recv(osrf_handle, 0)) ) {
-        read_one_osrf_message(tmsg);
+    while ( (tmsg = client_recv(osrf_handle, osrf_handle->bus_id, OSRF_REQUEST_TIMEOUT)) ) {
+        int complete = read_one_osrf_message(tmsg);
         message_free(tmsg);
+        if (complete) { break; }
     }
 }
 
 // Process a single OpenSRF response message and print the reponse
 // to STDOUT for delivery to the websocket client.
-static void read_one_osrf_message(transport_message* tmsg) {
+static int read_one_osrf_message(transport_message* tmsg) {
     osrfList *msg_list = NULL;
     osrfMessage *one_msg = NULL;
     int i;
+    int complete = 0;
 
     osrfLogDebug(OSRF_LOG_MARK,
         "WS received opensrf response for thread=%s", tmsg->thread);
@@ -640,11 +672,13 @@ static void read_one_osrf_message(transport_message* tmsg) {
                 // connection timed out; clear the cached recipient
                 if (one_msg->status_code == OSRF_STATUS_TIMEOUT) {
                     osrfHashRemove(stateful_session_cache, tmsg->thread);
+                    complete = 1;
 
                 } else {
 
                     if (one_msg->status_code == OSRF_STATUS_COMPLETE) {
                         requests_in_flight--;
+                        complete = 1;
                     }
                 }
             }
@@ -673,6 +707,7 @@ static void read_one_osrf_message(transport_message* tmsg) {
             "recipient=%s.  Likely the recipient is not accessible/available.",
             tmsg->thread, tmsg->sender);
         jsonObjectSetKey(msg_wrapper, "transport_error", jsonNewBoolObject(1));
+        complete = 1;
     }
 
     msg_string = jsonObjectToJSONRaw(msg_wrapper);
@@ -682,6 +717,8 @@ static void read_one_osrf_message(transport_message* tmsg) {
 
     free(msg_string);
     jsonObjectFree(msg_wrapper);
+
+    return complete;
 }
 
 

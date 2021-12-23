@@ -111,7 +111,7 @@ int main( int argc, char* argv[] ) {
 	snprintf(fbuf, sizeof(fbuf), "%s/.srfsh.xml", home);
 	
 	if(!access(fbuf, R_OK)) {
-		if( ! osrf_system_bootstrap_client(fbuf, "srfsh") ) {
+		if( ! osrf_system_bootstrap_client(fbuf, "srfsh", "srfsh") ) {
 			fprintf(stderr,"Unable to bootstrap client for requests\n");
 			osrfLogError( OSRF_LOG_MARK,  "Unable to bootstrap client for requests");
 			return -1;
@@ -968,7 +968,7 @@ static int router_query_servers( const char* router_server ) {
 	client_send_message( client, send );
 	message_free( send );
 
-	transport_message* recv = client_recv( client, -1 );
+	transport_message* recv = client_recv(client, client->bus_id, -1);
 	if( recv == NULL ) {
 		fprintf(stderr, "NULL message received from router\n");
 		return 1;

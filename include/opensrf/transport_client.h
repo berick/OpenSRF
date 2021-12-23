@@ -16,8 +16,8 @@
 #include <opensrf/osrf_json.h>
 #include <opensrf/transport_message.h>
 
-#define OSRF_MSG_BUS_CHUNK_SIZE = 1024;
-#define END_OF_TEXT_CHAR = "\x03";
+#define OSRF_MSG_BUS_CHUNK_SIZE 1024
+#define END_OF_TEXT_CHAR "\x03"
 
 #ifdef __cplusplus
 extern "C" {
