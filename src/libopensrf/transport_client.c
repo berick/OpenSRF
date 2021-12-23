@@ -113,7 +113,7 @@ int client_send_message(transport_client* client, transport_message* msg) {
         freeReplyObject(reply);
     }
     
-    return 1;
+    return 0;
 }
 
 // Returns true if if the reply was NULL or an error.
@@ -168,8 +168,8 @@ char* recv_one_chunk(transport_client* client, char* sent_to, int timeout) {
     } else if (reply->type == REDIS_REPLY_ARRAY) { // BLPOP
 
         // BLPOP returns [list_name, popped_value]
-        if (reply->elements == 2) {
-            json = reply->element[1]->str; 
+        if (reply->elements == 2 && reply->element[1]->str != NULL) {
+            json = strdup(reply->element[1]->str); 
         } else {
             osrfLogInternal(OSRF_LOG_MARK, 
                 "No response returned within timeout: %d", timeout);
@@ -261,11 +261,16 @@ jsonObject* recv_json_value(transport_client* client, char* sent_to, int timeout
 transport_message* client_recv(transport_client* client, char* sent_to, int timeout) {
 	if (client == NULL || client->bus == NULL) { return NULL; }
 
+
+    // TODO no need for intermediate to/from JSON.  Create transport
+    // message directly from received JSON object.
     jsonObject* obj = recv_one_value(client, sent_to, timeout);
 
     if (obj == NULL) { return NULL; } // Receive timed out.
 
     char* json = jsonObjectToJSON(obj);
+
+    osrfLogInfo(OSRF_LOG_MARK, "Creating transport message from: %s", json);
 
 	transport_message* msg = new_message_from_json(json);
 

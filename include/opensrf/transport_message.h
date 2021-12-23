@@ -41,7 +41,7 @@ extern "C" {
 */
 struct transport_message_struct {
 	char* body;            /**< Text enclosed by the body element. */
-    jsonObject* body_hash; /**< OpenSRF message as a JSON object */
+    jsonObject* body_arr; /**< OpenSRF message as a JSON object */
 	char* subject;         /**< Text enclosed by the subject element. */
 	char* thread;          /**< Text enclosed by the thread element. */
 	char* recipient;       /**< Value of the "to" attribute in the message element. */

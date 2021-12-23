@@ -56,6 +56,12 @@ char* osrfSystemGetServiceKey(void) {
     return private_service_key;
 }
 
+char* osrfSystemSetServiceKey(char* key) {
+    if (key != NULL) {
+        private_service_key = strdup(key);
+    }
+}
+
 /**
 	@brief Discard the global transport_client, but without disconnecting from Jabber.
 

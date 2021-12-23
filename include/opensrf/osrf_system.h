@@ -35,6 +35,7 @@ int osrf_system_service_ctrl(
 transport_client* osrfSystemGetTransportClient( void );
 
 char* osrfSystemGetServiceKey(void);
+char* osrfSystemSetServiceKey(char* key);
 
 int osrf_system_disconnect_client();
 

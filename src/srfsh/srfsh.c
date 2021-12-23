@@ -4,6 +4,7 @@
 */
 
 #include <opensrf/transport_client.h>
+#include <opensrf/osrf_system.h>
 #include <opensrf/osrf_message.h>
 #include <opensrf/osrf_app_session.h>
 #include <time.h>
@@ -131,6 +132,14 @@ int main( int argc, char* argv[] ) {
 				no_bang = 1;
 				continue;
 			}
+
+            if (!strcmp(argv[i], "--service-key")) {
+                i++;
+                if (i < argc) {
+                    osrfSystemSetServiceKey(argv[i]);
+                }
+                continue;
+            }
 
 			/* for now.. the first unrecognized arg is used as a script file for processing */
 			if (is_from_script) continue;

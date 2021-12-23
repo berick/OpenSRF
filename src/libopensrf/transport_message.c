@@ -62,7 +62,7 @@ transport_message* message_init( const char* body, const char* subject,
 		return NULL;
 	}
 
-    msg->body_hash      = NULL;
+    msg->body_arr      = NULL;
 	msg->router_from    = NULL;
 	msg->router_to      = NULL;
 	msg->router_class   = NULL;
@@ -261,7 +261,7 @@ transport_message* new_message_from_json(const char* msg_json) {
     new_msg->error_code     = 0;
     new_msg->broadcast      = 0;
     new_msg->msg_xml        = NULL;
-    new_msg->body_hash      = NULL;
+    new_msg->body_arr      = NULL;
     new_msg->next           = NULL;
 
     jsonObject* json_hash = jsonParse(msg_json);
@@ -288,15 +288,15 @@ transport_message* new_message_from_json(const char* msg_json) {
     const char* osrf_xid = jsonObjectGetString(jsonObjectGetKeyConst(json_hash, "osrf_xid"));
     if (osrf_xid) { message_set_osrf_xid(new_msg, (char*) osrf_xid); }
 
-    const jsonObject* body_hash = jsonObjectGetKeyConst(json_hash, "body");
+    const jsonObject* body_arr = jsonObjectGetKeyConst(json_hash, "body");
 
-    if (body_hash == NULL || body_hash->type != JSON_HASH) {
+    if (body_arr == NULL || body_arr->type != JSON_ARRAY) {
         osrfLogError(OSRF_LOG_MARK,  "new_message_from_json() message has no body");
         jsonObjectFree(json_hash);
         message_free(new_msg);
         return NULL;
     } else {
-        new_msg->body_hash = jsonObjectClone(body_hash); 
+        new_msg->body_arr = jsonObjectClone(body_arr); 
     }
 
     if (new_msg->thread == NULL)  { new_msg->thread = strdup(""); }
@@ -387,7 +387,7 @@ int message_free( transport_message* msg ){
     if( msg->error_type != NULL ) free(msg->error_type);
     if( msg->msg_xml != NULL ) free(msg->msg_xml);
     if (msg->msg_json != NULL) free(msg->msg_json);
-    if (msg->body_hash != NULL) jsonObjectFree(msg->body_hash);
+    if (msg->body_arr != NULL) jsonObjectFree(msg->body_arr);
     free(msg);
     return 1;
 }
@@ -505,13 +505,13 @@ int message_prepare_json(transport_message* msg) {
     jsonObjectSetKey(json_hash, "service_key", jsonNewObject(msg->service_key));
 
     // TODO: w/ Redis, no need to track the body as a string.
-    // teach message_init to accept a jsonObject as the body_hash
+    // teach message_init to accept a jsonObject as the body_arr
     // to avoid unnecessary JSON round trips.
-    if (msg->body && !msg->body_hash) {
-        msg->body_hash = jsonParse(msg->body);
+    if (msg->body && !msg->body_arr) {
+        msg->body_arr = jsonParse(msg->body);
     }
 
-    jsonObjectSetKey(json_hash, "body", jsonObjectClone(msg->body_hash));
+    jsonObjectSetKey(json_hash, "body", jsonObjectClone(msg->body_arr));
 
     msg->msg_json = jsonObjectToJSON(json_hash);
 
