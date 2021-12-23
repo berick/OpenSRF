@@ -73,6 +73,7 @@ transport_message* message_init( const char* body, const char* subject,
 	msg->error_code     = 0;
 	msg->broadcast      = 0;
 	msg->msg_xml        = NULL;
+    msg->msg_json       = NULL;
 	msg->next           = NULL;
 
 	return msg;
@@ -499,9 +500,17 @@ int message_prepare_json(transport_message* msg) {
     jsonObject* json_hash = jsonNewObject(NULL);
     jsonObjectSetKey(json_hash, "to", jsonNewObject(msg->recipient));
     jsonObjectSetKey(json_hash, "from", jsonNewObject(msg->sender));
-    jsonObjectSetKey(json_hash, "thread", jsonNewObject(msg->sender));
+    jsonObjectSetKey(json_hash, "thread", jsonNewObject(msg->thread));
     jsonObjectSetKey(json_hash, "osrf_xid", jsonNewObject(msg->osrf_xid));
     jsonObjectSetKey(json_hash, "service_key", jsonNewObject(msg->service_key));
+
+    // TODO: w/ Redis, no need to track the body as a string.
+    // teach message_init to accept a jsonObject as the body_hash
+    // to avoid unnecessary JSON round trips.
+    if (msg->body && !msg->body_hash) {
+        msg->body_hash = jsonParse(msg->body);
+    }
+
     jsonObjectSetKey(json_hash, "body", jsonObjectClone(msg->body_hash));
 
     msg->msg_json = jsonObjectToJSON(json_hash);

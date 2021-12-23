@@ -43,6 +43,7 @@ int client_connect(transport_client* client, const char* bus_name) {
 
     // TODO
     client->port = 6379;
+    client->host = "127.0.0.1";
 
     osrfLogDebug(OSRF_LOG_MARK, 
         "Transport client connecting with bus id: %s; host=%s; port=%d; unix_path=%s", 
