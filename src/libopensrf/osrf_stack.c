@@ -118,7 +118,8 @@ struct osrf_app_session_struct* osrf_stack_transport_handler( transport_message*
 	osrfMessage* arr[OSRF_MAX_MSGS_PER_PACKET];
 
 	/* Convert the message body into one or more osrfMessages */
-	int num_msgs = osrf_message_deserialize(msg->body, arr, OSRF_MAX_MSGS_PER_PACKET);
+	//int num_msgs = osrf_message_deserialize(msg->body, arr, OSRF_MAX_MSGS_PER_PACKET);
+	int num_msgs = osrf_message_unpack(msg->body_arr, arr, OSRF_MAX_MSGS_PER_PACKET);
 
 	osrfLogDebug( OSRF_LOG_MARK, "We received %d messages from %s", num_msgs, msg->sender );
 

@@ -618,6 +618,25 @@ int osrf_message_deserialize(const char* string, osrfMessage* msgs[], int count)
 	return numparsed;
 }
 
+int osrf_message_unpack(jsonObject* json, osrfMessage* msgs[], int count) {
+	if(!json || !msgs || count <= 0) return 0;
+	int numparsed = 0;
+
+	// Traverse the JSON_ARRAY, turning each element into an osrfMessage
+	int x;
+	for( x = 0; x < json->size && x < count; x++ ) {
+
+		const jsonObject* message = jsonObjectGetIndex( json, x );
+
+		if( message && message->type != JSON_NULL &&
+			message->classname && !strcmp(message->classname, "osrfMessage" )) {
+			msgs[numparsed++] = deserialize_one_message( message );
+		}
+	}
+
+	return numparsed;
+}
+
 
 /**
 	@brief Translate a jsonObject into a single osrfMessage.

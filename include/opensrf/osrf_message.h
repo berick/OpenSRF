@@ -138,6 +138,8 @@ osrfList* osrfMessageDeserialize( const char* string, osrfList* list );
 
 int osrf_message_deserialize(const char* json, osrfMessage* msgs[], int count);
 
+int osrf_message_unpack(jsonObject* arr, osrfMessage* msgs[], int count);
+
 void osrf_message_set_params( osrfMessage* msg, const jsonObject* o );
 
 void osrf_message_set_method( osrfMessage* msg, const char* method_name );
