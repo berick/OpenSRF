@@ -41,16 +41,28 @@ int client_connect(transport_client* client, const char* bus_name) {
 	client->bus_id = strdup(bus_id);
     free(md5);
 
-    osrfLogDebug(OSRF_LOG_MARK, 
-        "Transport client connecting with bus id: %s", client->bus_id);
+    // TODO
+    client->port = 6379;
 
+    osrfLogDebug(OSRF_LOG_MARK, 
+        "Transport client connecting with bus id: %s; host=%s; port=%d; unix_path=%s", 
+        client->bus_id, client->host, client->port, client->unix_path);
+
+    // TODO use redisConnectWithTimeout so we can verify connection.
     if (client->host && client->port) {
         client->bus = redisConnect(client->host, client->port);
     } else if (client->unix_path) {
         client->bus = redisConnectUnix(client->unix_path);
     }
 
-    return client->bus == NULL ? 0 : 1;
+    if (client->bus == NULL) {
+        osrfLogError(OSRF_LOG_MARK, "Could not connect to Redis instance");
+        return 0;
+    
+    } else {
+        osrfLogInfo(OSRF_LOG_MARK, "Connected to Redis instance OK");
+        return 1;
+    }
 }
 
 int client_disconnect(transport_client* client) {
@@ -85,6 +97,8 @@ int client_send_message(transport_client* client, transport_message* msg) {
 
         offset += OSRF_MSG_BUS_CHUNK_SIZE;
 
+        osrfLogInternal(OSRF_LOG_MARK, "Sending to: %s => %s", msg->recipient, chunk);
+
         redisReply *reply;
         if (offset < msg_len) {
             reply = redisCommand(client->bus, "RPUSH %s %s", msg->recipient, chunk);
@@ -94,12 +108,6 @@ int client_send_message(transport_client* client, transport_message* msg) {
         }
 
         if (handle_redis_error(reply)) { return -1; }
-
-        if (!reply || reply->type == REDIS_REPLY_ERROR) {
-            char* err = reply == NULL ? "" : reply->str;
-            osrfLogError(OSRF_LOG_MARK, "Error in client_send_message(): %", err);
-            return -1;
-        }
 
         freeReplyObject(reply);
     }
@@ -113,7 +121,7 @@ static int handle_redis_error(redisReply* reply) {
 
     if (reply == NULL || reply->type == REDIS_REPLY_ERROR) {
         char* err = reply == NULL ? "" : reply->str;
-        osrfLogError(OSRF_LOG_MARK, "Error in redisCommand(): %", err);
+        osrfLogError(OSRF_LOG_MARK, "Error in redisCommand(): %s", err);
         freeReplyObject(reply);
         return 1;
     }

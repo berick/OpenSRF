@@ -349,6 +349,7 @@ sub build_osrf_handle {
     #my $domain = $conf->bootstrap->domain;
     #my $port = $conf->bootstrap->port;
     
+    # TODO
     my $domain = '127.0.0.1';
     my $port = 6379;
 
