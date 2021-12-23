@@ -417,12 +417,12 @@ static int osrfHttpTranslatorProcess(osrfHttpTranslator* trans) {
     if (NULL == jsonBody)
         return HTTP_BAD_REQUEST;
 
-    while(client_recv(trans->handle, 0))
+    while(client_recv(trans->handle, trans->handle->bus_id, 0))
         continue; // discard any old status messages in the recv queue
 
     // send the message to the recipient
     transport_message* tmsg = message_init(
-        jsonBody, NULL, trans->thread, trans->recipient, NULL);
+        jsonBody, NULL, trans->thread, trans->recipient, NULL, NULL);
     message_set_osrf_xid(tmsg, osrfLogGetXid());
     client_send_message(trans->handle, tmsg);
     message_free(tmsg); 
@@ -437,7 +437,8 @@ static int osrfHttpTranslatorProcess(osrfHttpTranslator* trans) {
     // process the response from the opensrf service
     int firstWrite = 1;
     while(!trans->complete) {
-        transport_message* msg = client_recv(trans->handle, trans->timeout);
+        transport_message* msg = 
+            client_recv(trans->handle, trans->handle->bus_id, trans->timeout);
 
         if(trans->handle->error) {
             osrfLogError(OSRF_LOG_MARK, "Transport error");
