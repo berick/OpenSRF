@@ -25,9 +25,6 @@ int client_connect(transport_client* client, const char* bus_name) {
 
 	if (client == NULL || bus_name == NULL) { return 0; }
 
-	// Create and store a Jabber ID
-	if (client->bus_id) { free(client->bus_id); }
-
     char junk[256];
 	snprintf(junk, sizeof(junk), 
         "%f.%d%ld", get_timestamp_millis(), (int) time(NULL), (long) getpid());
@@ -43,7 +40,7 @@ int client_connect(transport_client* client, const char* bus_name) {
 
     // TODO
     client->port = 6379;
-    client->host = "127.0.0.1";
+    client->host = strdup("127.0.0.1");
 
     osrfLogDebug(OSRF_LOG_MARK, 
         "Transport client connecting with bus id: %s; host=%s; port=%d; unix_path=%s", 
@@ -269,8 +266,6 @@ transport_message* client_recv(transport_client* client, char* sent_to, int time
     if (obj == NULL) { return NULL; } // Receive timed out.
 
     char* json = jsonObjectToJSON(obj);
-
-    osrfLogInfo(OSRF_LOG_MARK, "Creating transport message from: %s", json);
 
 	transport_message* msg = new_message_from_json(json);
 

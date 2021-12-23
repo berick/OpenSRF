@@ -472,10 +472,6 @@ int osrfSystemBootstrapClientResc( const char* config_file,
 
 	transport_client* client = client_init(domain, iport, unixpath);
 
-	char host[HOST_NAME_MAX + 1] = "";
-	gethostname(host, sizeof(host) );
-	host[HOST_NAME_MAX] = '\0';
-
 	if (appname == NULL) { appname = "client"; }
 
 	if (client_connect(client, appname)) {
