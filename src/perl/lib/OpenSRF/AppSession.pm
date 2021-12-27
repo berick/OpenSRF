@@ -208,6 +208,7 @@ sub last_sent_type {
 
 sub get_app_targets {
 	my $app = shift;
+    return ($app);
 
 	my $conf = OpenSRF::Utils::Config->current;
 	my $router_name = $conf->bootstrap->router_name || 'router';
@@ -578,6 +579,9 @@ sub send {
 		}
 
 	} 
+
+    # TODO Redis
+    # We can remove this extra layer of JSON round-tripping on the body.
 	my $json = OpenSRF::Utils::JSON->perl2JSON(\@doc);
 	$logger->internal("AppSession sending doc: $json");
 
