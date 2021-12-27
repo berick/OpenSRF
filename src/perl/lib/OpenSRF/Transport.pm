@@ -112,7 +112,8 @@ sub handler {
         throw OpenSRF::EX::Session ("Transport::handler(): No AppSession object returned from server_build()");
     }
 
-    if ($service eq 'client' || OpenSRF::Application->public_service) {
+    # TODO disabling private key check for now
+    if (1 || $service eq 'client' || OpenSRF::Application->public_service) {
 
         $logger->internal("Access granted to service: $service");
 

@@ -206,7 +206,7 @@ int osrf_prefork_run( const char* appname ) {
 	prefork_launch_children( &forker );
 
 	// Tell the router that you're open for business.
-	osrf_prefork_register_routers( appname, false );
+	//osrf_prefork_register_routers( appname, false );
 
 	signal( SIGUSR1, sigusr1_handler);
 	signal( SIGUSR2, sigusr2_handler);
@@ -697,7 +697,7 @@ static void sigchld_handler( int sig ) {
 */
 static void sigusr1_handler( int sig ) {
 	if (!global_forker) return;
-	osrf_prefork_register_routers(global_forker->appname, true);
+	//osrf_prefork_register_routers(global_forker->appname, true);
 	signal( SIGUSR1, sigusr1_handler );
 }
 
@@ -709,7 +709,7 @@ static void sigusr1_handler( int sig ) {
 */
 static void sigusr2_handler( int sig ) {
 	if (!global_forker) return;
-	osrf_prefork_register_routers(global_forker->appname, false);
+	//osrf_prefork_register_routers(global_forker->appname, false);
 	signal( SIGUSR2, sigusr2_handler );
 }
 
@@ -1446,7 +1446,7 @@ static void prefork_clear( prefork_simple* prefork, bool graceful ) {
 
 	// always de-register routers before killing child processes (or waiting
 	// for them to complete) so that new requests are directed elsewhere.
-	osrf_prefork_register_routers(global_forker->appname, true);
+	//osrf_prefork_register_routers(global_forker->appname, true);
 
 	while( prefork->first_child ) {
 

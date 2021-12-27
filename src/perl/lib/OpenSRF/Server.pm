@@ -72,7 +72,7 @@ sub cleanup {
     $logger->info("server: shutting down and cleaning up...");
 
     # de-register routers
-    $self->unregister_routers;
+    #$self->unregister_routers;
 
     if ($graceful) {
         # graceful shutdown waits for all active 
@@ -147,12 +147,12 @@ sub run {
     $SIG{TERM} = sub { $self->cleanup(0, 1); };
     $SIG{CHLD} = sub { $self->reap_children(); };
     $SIG{HUP} = sub { $self->handle_sighup(); };
-    $SIG{USR1} = sub { $self->unregister_routers; };
-    $SIG{USR2} = sub { $self->register_routers; };
+    #$SIG{USR1} = sub { $self->unregister_routers; };
+    #$SIG{USR2} = sub { $self->register_routers; };
 
     $self->spawn_children;
     $self->build_osrf_handle;
-    $self->register_routers;
+    #$self->register_routers;
     my $wait_time = 1;
 
     my @max_children_msg_queue;
@@ -603,6 +603,8 @@ sub spawn_child {
 # ----------------------------------------------------------------
 sub register_routers {
     my $self = shift;
+
+    return;
 
     return $self->{routers} = []; # Redis
 

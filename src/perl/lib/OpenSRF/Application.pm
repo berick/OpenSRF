@@ -477,6 +477,11 @@ sub register_method {
 }
 
 sub retrieve_remote_apis {
+	$logger->info("ROUTER WHAT in retrieve_remote_apis()");
+	return;
+
+	$logger->info("ROUTER HOW AM I HERE");
+
 	my $method = shift;
 	my $session = OpenSRF::AppSession->create('router');
 	try {

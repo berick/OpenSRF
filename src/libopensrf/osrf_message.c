@@ -529,11 +529,12 @@ jsonObject* osrfMessageToJSON( const osrfMessage* msg ) {
 	The calling code is responsible for eventually freeing the returned osrfList by calling
 	osrfListFree().
  */
-osrfList* osrfMessageDeserialize( const char* string, osrfList* list ) {
+osrfList* osrfMessageDeserialize(jsonObject* json, osrfList* list) {
 
 	if( list )
 		osrfListClear( list );
 
+    /*
 	if( ! string  || ! *string ) {
 		if( ! list ) {
 			list = osrfNewList( 1 );
@@ -541,12 +542,15 @@ osrfList* osrfMessageDeserialize( const char* string, osrfList* list ) {
 		}
 		return list;                   // No string?  Return empty list.
 	}
+    */
 	
 	// Parse the JSON
-	jsonObject* json = jsonParse(string);
+	//jsonObject* json = jsonParse(string);
 	if(!json) {
+        /*
 		osrfLogWarning( OSRF_LOG_MARK,
 				"osrfMessageDeserialize() unable to parse data: \n%s\n", string);
+                */
 		if( ! list ) {
 			list = osrfNewList( 1 );
 			list->freeItem = (void(*)(void*)) osrfMessageFree;
@@ -572,7 +576,7 @@ osrfList* osrfMessageDeserialize( const char* string, osrfList* list ) {
 		}
 	}
 
-	jsonObjectFree( json );
+	//jsonObjectFree( json );
 	return list;
 }
 

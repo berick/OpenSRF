@@ -3,7 +3,7 @@ use strict;
 use base qw/OpenSRF::Transport::Redis::Client/;
 use Digest::MD5 qw(md5_hex);
 use OpenSRF::Utils::Config;
-use OpenSRF::Utils::Logger qw(:level);
+use OpenSRF::Utils::Logger qw/$logger/;
 
 our $_singleton_connection;
 
@@ -30,17 +30,22 @@ sub new {
     die "No suitable config found for PeerConnection\n" unless $config;
 
     my $conf = OpenSRF::Utils::Config->current;
+    # TODO
     #my $port = $conf->bootstrap->port || 6379;
     my $port = 6379;
     #my $host = $conf->bootstrap->host || '127.0.0.1';
     my $host = '127.0.0.1';
     my $sock = $conf->bootstrap->sock;
 
+    my $bus_id = "$app-" . substr(md5_hex($$ . time . rand($$)), 0, 12);
+
+    $logger->debug("PeerConnection::new() using bus id: $bus_id");
+
     my $self = $class->SUPER::new(
         host => $host,
         port => $port,
         sock => $sock,
-        bus_id => "$app-" . substr(md5_hex($$ . time . rand($$)), 0, 12)
+        bus_id => $bus_id
     );
 
     bless($self, $class);

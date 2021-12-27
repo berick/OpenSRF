@@ -254,6 +254,11 @@ sub create {
 			        
 	$logger->debug( "AppSession creating new client session for $app", DEBUG );
 
+    if ($app eq 'router') {
+        my ($package, $filename, $line) = caller;
+        $logger->info("ROUTER $filename:$line");
+    }
+
 	my $stateless = 0;
 	my $c = OpenSRF::Utils::SettingsClient->new();
 	# we can get an infinite loop if we're grabbing the settings and we
@@ -280,11 +285,11 @@ sub create {
 			   endpoint    => CLIENT,
 			   state       => DISCONNECTED,#since we're init'ing
 			   session_id  => $sess_id,
-			   remote_id   => $r_id,
+			   remote_id   => $app,
 			   raise_error   => $quiet ? 0 : 1,
 			   session_locale   => $locale,
 			   api_level   => $api_level,
-			   orig_remote_id   => $r_id,
+			   orig_remote_id   => $app,
 				peer_handle => $peer_handle,
 				session_threadTrace => 0,
 				stateless		=> $stateless,

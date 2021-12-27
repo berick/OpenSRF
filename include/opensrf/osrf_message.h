@@ -134,7 +134,7 @@ jsonObject* osrfMessageToJSON( const osrfMessage* msg );
 
 char* osrf_message_serialize(const osrfMessage*);
 
-osrfList* osrfMessageDeserialize( const char* string, osrfList* list );
+osrfList* osrfMessageDeserialize(jsonObject* json, osrfList* list);
 
 int osrf_message_deserialize(const char* json, osrfMessage* msgs[], int count);
 

@@ -451,8 +451,11 @@ static void relay_stdin_message(const char* msg_string) {
     if (!recipient) {
 
         if (service) {
+            /*
             int size = snprintf(recipient_buf, RECIP_BUF_SIZE - 1,
                 "%s@%s/%s", osrf_router, osrf_domain, service);
+            */
+            int size = snprintf(recipient_buf, RECIP_BUF_SIZE - 1, "%s", service);
             recipient_buf[size] = '\0';
             recipient = recipient_buf;
 
@@ -628,7 +631,8 @@ static int read_one_osrf_message(transport_message* tmsg) {
         "WS received opensrf response for thread=%s", tmsg->thread);
 
     // first we need to perform some maintenance
-    msg_list = osrfMessageDeserialize(tmsg->body, NULL);
+    //msg_list = osrfMessageDeserialize(tmsg->body, NULL);
+    msg_list = osrfMessageDeserialize(tmsg->body_arr, NULL);
 
     for (i = 0; i < msg_list->size; i++) {
         one_msg = OSRF_LIST_GET_INDEX(msg_list, i);
@@ -697,7 +701,8 @@ static int read_one_osrf_message(transport_message* tmsg) {
 
     jsonObjectSetKey(msg_wrapper, "thread", jsonNewObject(tmsg->thread));
     jsonObjectSetKey(msg_wrapper, "log_xid", jsonNewObject(tmsg->osrf_xid));
-    jsonObjectSetKey(msg_wrapper, "osrf_msg", jsonParseRaw(tmsg->body));
+    //jsonObjectSetKey(msg_wrapper, "osrf_msg", jsonParseRaw(tmsg->body));
+    jsonObjectSetKey(msg_wrapper, "osrf_msg", jsonObjectClone(tmsg->body_arr));
 
     if (tmsg->is_error) {
         // tmsg->sender is the original recipient. they get swapped
@@ -710,7 +715,8 @@ static int read_one_osrf_message(transport_message* tmsg) {
         complete = 1;
     }
 
-    msg_string = jsonObjectToJSONRaw(msg_wrapper);
+    //msg_string = jsonObjectToJSONRaw(msg_wrapper);
+    msg_string = jsonObjectToJSON(msg_wrapper);
 
     // Send the JSON to STDOUT
     printf("%s\n", msg_string);

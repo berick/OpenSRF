@@ -8,7 +8,8 @@ use OpenSRF::Utils::JSON;
 use OpenSRF::Utils::Logger qw/$logger/;
 use OpenSRF::Transport::Redis::Message;
 
-my $OSRF_MSG_CHUNK_SIZE = 1024;
+#my $OSRF_MSG_CHUNK_SIZE = 1024;
+my $OSRF_MSG_CHUNK_SIZE = 256;
 my $END_OF_TEXT_CHAR = "\x{03}"; # ETX / End of Text
 
 sub new {
@@ -32,7 +33,10 @@ sub params {
 
 sub disconnect {
     my $self = shift;
-    $self->redis->quit if $self->redis;
+    if ($self->redis) {
+        $self->redis->quit;
+        delete $self->{redis};
+    }
 }
 
 sub gather { 
@@ -71,6 +75,8 @@ sub send {
 
         my $chunk = substr($msg_json, $offset, $OSRF_MSG_CHUNK_SIZE);
 
+        $logger->info("to=".$msg->to." offset=$offset NET SENDING CHUNK: $chunk");
+
         $offset += $OSRF_MSG_CHUNK_SIZE;
 
         if ($offset < $msg_len) {
@@ -93,7 +99,8 @@ sub initialize {
     my $sock = $self->params->{sock}; 
     my $bus_id = $self->params->{bus_id};
 
-    $logger->debug("Redis client connecting with bus_id $bus_id");
+    my ($package, $filename, $line) = caller;
+    $logger->debug("Redis client connecting with bus_id $bus_id : $filename : $line");
 
     my $conf = OpenSRF::Utils::Config->current;
 
@@ -162,36 +169,39 @@ sub recv {
         if ($timeout == 0) {
             # Non-blocking list pop
             $packet = $self->redis->lpop($to);
+
         } else {
             # In Redis, timeout 0 means wait indefinitely
             $packet = $self->redis->blpop($to, $timeout == -1 ? 0 : $timeout);
         }
 
         # Timed out waiting for data.
-        return undef unless $packet;
+        return undef unless defined $packet;
 
-        $json .= $packet->[1]; # [sender, text]
+        my $text = ref $packet eq 'ARRAY' ? $packet->[1] : $packet;
+
+        $logger->info("to=$to NET READ DATA: $text");
+        $logger->info("to=$to NET APPENDING TO: $json");
+
+        $json .= $text;
+
+        $logger->info("to=$to NET CURRENT MESSAGE BLOB: $json");
 
         if (substr($json, length($json) - 1, 1) eq $END_OF_TEXT_CHAR) { # EOM
             chop($json); # remove the trailing null byte
+            $logger->info("to=$to NET FINAL JSON: $json");
             last;
         }
     }
-
-    # TODO: debugging
-    use Data::Dumper;
-    $Data::Dumper::Indent = 0;
 
     my $resp;
 
     eval { $resp = OpenSRF::Utils::JSON->JSON2perl($json); };
 
     if ($@) {
-        $logger->error("Received invalid JSON: $@ : $json");
+        $logger->error("NET Received invalid JSON: $@ : $json");
         return undef;
     }
-
-    $logger->internal("recv() created object" . Dumper($resp));
 
     return OpenSRF::Transport::Redis::Message->new(%$resp);
 }
