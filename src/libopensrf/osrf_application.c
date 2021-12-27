@@ -331,7 +331,7 @@ int osrfAppRegisterExtendedMethod( const char* appName, const char* methodName,
 		return -1;
 	}
 
-	osrfLogDebug( OSRF_LOG_MARK, "Registering method %s for app %s", methodName, appName );
+	osrfLogInternal( OSRF_LOG_MARK, "Registering method %s for app %s", methodName, appName );
 
 	// Extract the only valid option bits, and ignore the rest.
 	int opts = options & ( OSRF_METHOD_STREAMING | OSRF_METHOD_CACHABLE );

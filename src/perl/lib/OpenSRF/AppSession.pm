@@ -6,7 +6,6 @@ use OpenSRF::Transport::PeerHandle;
 use OpenSRF::Utils::JSON;
 use OpenSRF::Utils::Logger qw(:level);
 use OpenSRF::Utils::SettingsClient;
-use OpenSRF::Utils::Config;
 use OpenSRF::EX;
 use OpenSRF;
 use Exporter;
@@ -208,18 +207,7 @@ sub last_sent_type {
 
 sub get_app_targets {
 	my $app = shift;
-
-	my $conf = OpenSRF::Utils::Config->current;
-	my $router_name = $conf->bootstrap->router_name || 'router';
-	my $domain = $conf->bootstrap->domain;
-	$logger->error("use of <domains/> is deprecated") if $conf->bootstrap->domains;
-
-	unless($router_name and $domain) {
-		throw OpenSRF::EX::Config 
-			("Missing router config information 'router_name' and 'domain'");
-	}
-
-    return ("$router_name\@$domain/$app");
+    return ("service:$app");
 }
 
 sub stateless {
@@ -578,6 +566,9 @@ sub send {
 		}
 
 	} 
+
+    # TODO Redis
+    # We can remove this extra layer of JSON round-tripping on the body.
 	my $json = OpenSRF::Utils::JSON->perl2JSON(\@doc);
 	$logger->internal("AppSession sending doc: $json");
 

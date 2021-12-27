@@ -7,7 +7,6 @@ use OpenSRF::Utils::JSON;
 use OpenSRF::Utils::Logger qw(:level);
 use OpenSRF::DomainObject::oilsResponse qw/:status/;
 use OpenSRF::EX qw/:try/;
-use OpenSRF::Transport::SlimJabber::MessageWrapper;
 
 #------------------ 
 # --- These must be implemented by all Transport subclasses
@@ -34,32 +33,9 @@ sub get_msg_envelope { shift()->alert_abstract(); }
 our $message_envelope;
 my $logger = "OpenSRF::Utils::Logger"; 
 
-
-
-=head2 message_envelope( [$envelope] );
-
-Sets the message envelope class that will allow us to extract
-information from the messages we receive from the low 
-level transport
-
-=cut
-
-sub message_envelope {
-	my( $class, $envelope ) = @_;
-	if( $envelope ) {
-		$message_envelope = $envelope;
-		$envelope->use;
-		if( $@ ) {
-			$logger->error( 
-					"Error loading message_envelope: $envelope -> $@", ERROR);
-		}
-	}
-	return $message_envelope;
-}
-
 =head2 handler( $data )
 
-Creates a new MessageWrapper, extracts the remote_id, session_id, and message body
+Creates a new Message, extracts the remote_id, session_id, and message body
 from the message.  Then, creates or retrieves the AppSession object with the session_id and remote_id. 
 Finally, creates the message document from the body of the message and calls
 the handler method on the message document.

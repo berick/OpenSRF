@@ -111,7 +111,7 @@ int main( int argc, char* argv[] ) {
 	snprintf(fbuf, sizeof(fbuf), "%s/.srfsh.xml", home);
 	
 	if(!access(fbuf, R_OK)) {
-		if( ! osrf_system_bootstrap_client(fbuf, "srfsh") ) {
+		if( ! osrf_system_bootstrap_common(fbuf, "srfsh", "srfsh", 0) ) {
 			fprintf(stderr,"Unable to bootstrap client for requests\n");
 			osrfLogError( OSRF_LOG_MARK,  "Unable to bootstrap client for requests");
 			return -1;
