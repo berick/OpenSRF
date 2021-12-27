@@ -31,6 +31,7 @@ char* osrf_json_gateway_config_file = NULL;
 int bootstrapped = 0;
 int numserved = 0;
 osrfStringArray* allowedOrigins = NULL;
+static osrfStringArray* public_services = NULL;
 
 static const char* osrf_json_gateway_set_default_locale(cmd_parms *parms,
 		void *config, const char *arg) {
@@ -82,11 +83,14 @@ static void osrf_json_gateway_child_init(apr_pool_t *p, server_rec *s) {
 	int t = time(NULL);
 	snprintf(buf, sizeof(buf), "%d", t);
 
-	if( ! osrfSystemBootstrapClientResc( cfg, CONFIG_CONTEXT, buf ) ) {
+	if( ! osrf_system_bootstrap_common( cfg, CONFIG_CONTEXT, buf, 0 ) ) {
 		ap_log_error( APLOG_MARK, APLOG_ERR, 0, s,
 			"Unable to Bootstrap OpenSRF Client with config %s..", cfg);
 		return;
 	}
+
+    public_services = osrfNewStringArray(16);
+    osrfConfigGetValueList(NULL, public_services, "/config/public_services/service");
 
 	allowedOrigins = osrfNewStringArray(4);
 	osrfConfigGetValueList(NULL, allowedOrigins, "/cross_origin/origin");
@@ -222,7 +226,8 @@ static int osrf_json_gateway_method_handler (request_rec *r) {
 	/* ----------------------------------------------------------------- */
 
 
-	if(!(service && method)) {
+	if(!(service && method) || 
+        (service && !osrfStringArrayContains(public_services, service))) {
 
 		osrfLogError(OSRF_LOG_MARK,
 			"Service [%s] not found or not allowed", service);

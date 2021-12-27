@@ -10,6 +10,7 @@
 */
 
 #include <time.h>
+#include <hiredis.h>
 #include <opensrf/transport_session.h>
 #include <opensrf/utils.h>
 #include <opensrf/log.h>
@@ -29,18 +30,34 @@ struct message_list_struct;
 struct transport_client_struct {
 	transport_message* msg_q_head;   /**< Head of message queue */
 	transport_message* msg_q_tail;   /**< Tail of message queue */
-	transport_session* session;      /**< Manages lower-level message processing */
+    redisContext* bus;
+
+    // Our communication stream.
+    // This will be unique for all connections except service-level
+    // (Listener) connections.
+    char* stream_name;
+
+    // Our unique name.
+    // Will match the unique stream_name for non-service-level connections.
+    char* consumer_name;
+
+    int max_queue_size;
+
+    int port;
+    char* unix_path;
 	int error;                       /**< Boolean: true if an error has occurred */
 	char* host;                      /**< Domain name or IP address of the Jabber server */
 	char* xmpp_id;                   /**< Jabber ID used for outgoing messages */
 };
 typedef struct transport_client_struct transport_client;
 
-transport_client* client_init( const char* server, int port, const char* unix_path, int component );
+transport_client* client_init( const char* server, int port, const char* unix_path );
 
-int client_connect( transport_client* client, 
-		const char* username, const char* password, const char* resource,
-		int connect_timeout, enum TRANSPORT_AUTH_TYPE auth_type );
+int client_connect_with_stream_name(transport_client* client, const char* username, const char* password); 
+int client_connect_as_service(transport_client* client, 
+    const char* appname, const char* username, const char* password); 
+int client_connect(transport_client* client, 
+    const char* appname, const char* username, const char* password); 
 
 int client_disconnect( transport_client* client );
 
