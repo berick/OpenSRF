@@ -1,6 +1,9 @@
 #ifndef TRANSPORT_CLIENT_H
 #define TRANSPORT_CLIENT_H
 
+#define OSRF_MSG_BUS_CHUNK_SIZE 1024
+#define END_OF_TEXT_CHAR "\x03"
+
 /**
 	@file transport_client.h
 	@brief Header for implementation of transport_client.
@@ -10,6 +13,7 @@
 */
 
 #include <time.h>
+#include <hiredis.h>
 #include <opensrf/transport_session.h>
 #include <opensrf/utils.h>
 #include <opensrf/log.h>
@@ -29,18 +33,21 @@ struct message_list_struct;
 struct transport_client_struct {
 	transport_message* msg_q_head;   /**< Head of message queue */
 	transport_message* msg_q_tail;   /**< Tail of message queue */
-	transport_session* session;      /**< Manages lower-level message processing */
+    redisContext* bus;
+    char* bus_id;
+    int port;
+    char* unix_path;
 	int error;                       /**< Boolean: true if an error has occurred */
 	char* host;                      /**< Domain name or IP address of the Jabber server */
 	char* xmpp_id;                   /**< Jabber ID used for outgoing messages */
 };
 typedef struct transport_client_struct transport_client;
 
-transport_client* client_init( const char* server, int port, const char* unix_path, int component );
+transport_client* client_init( const char* server, int port, const char* unix_path );
 
-int client_connect( transport_client* client, 
-		const char* username, const char* password, const char* resource,
-		int connect_timeout, enum TRANSPORT_AUTH_TYPE auth_type );
+int client_connect_with_bus_id(transport_client* client); 
+int client_connect_as_service(transport_client* client, const char* appname); 
+int client_connect(transport_client* client, const char* appname); 
 
 int client_disconnect( transport_client* client );
 

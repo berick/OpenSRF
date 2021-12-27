@@ -517,7 +517,7 @@ static apr_status_t childExit(void* data) {
 #endif
 
 static void childInit(apr_pool_t *p, server_rec *s) {
-	if(!osrfSystemBootstrapClientResc(configFile, configCtx, "translator")) {
+	if(!osrfSystemBootstrapClientResc(configFile, configCtx, "translator", 0)) {
 		ap_log_error( APLOG_MARK, APLOG_ERR, 0, s, 
 			"Unable to Bootstrap OpenSRF Client with config %s..", configFile);
 		return;

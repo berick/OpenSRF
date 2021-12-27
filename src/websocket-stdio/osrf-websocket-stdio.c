@@ -100,7 +100,7 @@ static void relay_stdin_message(const char*);
 static char* extract_inbound_messages();
 static void log_request(const char*, osrfMessage*);
 static void read_from_osrf();
-static void read_one_osrf_message(transport_message*);
+static int read_one_osrf_message(transport_message*);
 static int shut_it_down(int);
 static void release_hash_string(char*, void*);
 static int can_shutdown_gracefully();
@@ -133,15 +133,15 @@ int main(int argc, char* argv[]) {
     // (replies returning to the websocket client).
     fd_set fds;
     int stdin_no = fileno(stdin);
-    int osrf_no = osrf_handle->session->sock_id;
-    int maxfd = osrf_no > stdin_no ? osrf_no : stdin_no;
+    //int maxfd = osrf_no > stdin_no ? osrf_no : stdin_no;
+    int maxfd = stdin_no;
     int sel_resp;
     int shutdown_stat;
 
     while (1) {
 
         FD_ZERO(&fds);
-        FD_SET(osrf_no, &fds);
+       // FD_SET(osrf_no, &fds);
         FD_SET(stdin_no, &fds);
 
         if (shutdown_requested) {
@@ -178,11 +178,14 @@ int main(int argc, char* argv[]) {
 
             if (FD_ISSET(stdin_no, &fds)) {
                 read_from_stdin();
+                read_from_osrf();
             }
 
+            /*
             if (FD_ISSET(osrf_no, &fds)) {
                 read_from_osrf();
             }
+            */
         }
 
         if (shutdown_requested) {
@@ -251,7 +254,7 @@ static void child_init(int argc, char* argv[]) {
         config_file = argv[1];
     }
 
-    if (!osrf_system_bootstrap_client(config_file, config_ctxt) ) {
+    if (!osrf_system_bootstrap_client(config_file, config_ctxt, "websocket", 0) ) {
         fprintf(stderr, "Cannot boostrap OSRF\n");
         shut_it_down(1);
     }
@@ -568,8 +571,7 @@ static void read_from_osrf() {
     transport_message* tmsg = NULL;
 
     // Double check the socket connection before continuing.
-    if (!client_connected(osrf_handle) ||
-        !socket_connected(osrf_handle->session->sock_id)) {
+    if (!client_connected(osrf_handle)) {
         osrfLogWarning(OSRF_LOG_MARK,
             "WS: Jabber socket disconnected, exiting");
         shut_it_down(1);
@@ -579,18 +581,20 @@ static void read_from_osrf() {
     // read.  This means we can't return to the main select() loop after
     // each message, because any subsequent messages will get stuck in
     // the opensrf receive queue. Process all available messages.
-    while ( (tmsg = client_recv(osrf_handle, 0)) ) {
-        read_one_osrf_message(tmsg);
+    while ( (tmsg = client_recv(osrf_handle, 120)) ) { // TODO 120 const
+        int complete = read_one_osrf_message(tmsg);
         message_free(tmsg);
+        if (complete) { break; }
     }
 }
 
 // Process a single OpenSRF response message and print the reponse
 // to STDOUT for delivery to the websocket client.
-static void read_one_osrf_message(transport_message* tmsg) {
+static int read_one_osrf_message(transport_message* tmsg) {
     osrfList *msg_list = NULL;
     osrfMessage *one_msg = NULL;
     int i;
+    int complete = 0;
 
     osrfLogDebug(OSRF_LOG_MARK,
         "WS received opensrf response for thread=%s", tmsg->thread);
@@ -640,10 +644,12 @@ static void read_one_osrf_message(transport_message* tmsg) {
                 // connection timed out; clear the cached recipient
                 if (one_msg->status_code == OSRF_STATUS_TIMEOUT) {
                     osrfHashRemove(stateful_session_cache, tmsg->thread);
+                    complete = 1;
 
                 } else {
 
                     if (one_msg->status_code == OSRF_STATUS_COMPLETE) {
+                        complete = 1;
                         requests_in_flight--;
                     }
                 }
@@ -682,6 +688,8 @@ static void read_one_osrf_message(transport_message* tmsg) {
 
     free(msg_string);
     jsonObjectFree(msg_wrapper);
+
+    return complete;
 }
 
 
