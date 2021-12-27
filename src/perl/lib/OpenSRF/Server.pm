@@ -344,14 +344,20 @@ sub build_osrf_handle {
     my $conf = OpenSRF::Utils::Config->current;
     my $username = $conf->bootstrap->username;
     my $password = $conf->bootstrap->passwd;
-    my $domain = $conf->bootstrap->domain;
-    my $port = $conf->bootstrap->port;
+    #my $domain = $conf->bootstrap->domain;
+    #my $port = $conf->bootstrap->port;
+
+    # TODO
+    my $domain = '127.0.0.1';
+    my $port = 6379;
+
     my $resource = $self->{service} . '_listener_' . $conf->env->hostname;
 
     $logger->debug("server: inbound connecting as $username\@$domain/$resource on port $port");
 
     $self->{osrf_handle} =
-        OpenSRF::Transport::SlimJabber::Client->new(
+        OpenSRF::Transport::Redis::Client->new(
+            bus_id => $self->{service},
             username => $username,
             resource => $resource,
             password => $password,
@@ -368,11 +374,12 @@ sub build_osrf_handle {
 # ----------------------------------------------------------------
 sub write_child {
     my($self, $child, $msg) = @_;
-    my $xml = encode_utf8(decode_utf8($msg->to_xml));
+    #my $xml = encode_utf8(decode_utf8($msg->to_xml));
+    my $json = $msg->to_json;
 
     # tell the child how much data to expect, minus the header
     my $write_size;
-    {use bytes; $write_size = length($xml)}
+    {use bytes; $write_size = length($json)}
     $write_size = sprintf("%*s", WRITE_PIPE_DATA_SIZE, $write_size);
 
     for (0..2) {
@@ -389,12 +396,12 @@ sub write_child {
         # so the lack of a pid means the child is dead.
         if (!$child->{pid}) {
             $logger->error("server: child is dead in write_child(). ".
-                "unable to send message: $xml");
+                "unable to send message: $json");
             return; # avoid syswrite crash
         }
 
         # send message to child data pipe
-        syswrite($child->{pipe_to_child}, $write_size . $xml);
+        syswrite($child->{pipe_to_child}, $write_size . $json);
 
         last unless $self->{sig_pipe};
         $logger->error("server: got SIGPIPE writing to $child, retrying...");
@@ -591,6 +598,8 @@ sub spawn_child {
 # Sends the register command to the configured routers
 # ----------------------------------------------------------------
 sub register_routers {
+    return; # TODO Redis
+
     my $self = shift;
 
     my $conf = OpenSRF::Utils::Config->current;
@@ -636,6 +645,8 @@ sub register_routers {
 # with.
 # ----------------------------------------------------------------
 sub unregister_routers {
+    return; # TODO Redis
+
     my $self = shift;
     return unless $self->{osrf_handle}->tcp_connected;
 
@@ -727,7 +738,7 @@ sub run {
 
         my $session = OpenSRF::Transport->handler(
             $self->{parent}->{service},
-            OpenSRF::Transport::SlimJabber::XMPPMessage->new(xml => $data)
+            OpenSRF::Transport::Redis::Message->new(json => $data)
         );
 
         my $recycle = $self->keepalive_loop($session);
