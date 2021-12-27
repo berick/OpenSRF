@@ -29,7 +29,6 @@ TARGS = 		osrf_message.c \
 			osrfConfig.c \
 			osrf_application.c \
 			osrf_cache.c \
-			osrf_transgroup.c \
 			osrf_list.c \
 			osrf_hash.c \
 			osrf_utf8.c \
