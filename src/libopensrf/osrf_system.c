@@ -74,8 +74,9 @@ void osrfSystemIgnoreTransportClient() {
 
 	A thin wrapper for osrfSystemBootstrapClientResc, passing it NULL for a resource.
 */
-int osrf_system_bootstrap_client( char* config_file, char* contextnode ) {
-	return osrfSystemBootstrapClientResc(config_file, contextnode, NULL);
+int osrf_system_bootstrap_client(const char* config_file, 
+    const char* contextnode, const char* appname, int is_service) {
+	return osrfSystemBootstrapClientResc(config_file, contextnode, appname, is_service);
 }
 
 /**
@@ -185,7 +186,7 @@ int osrf_system_service_ctrl(
         const char* action, const char* service) {
     
     // Load the conguration, open the log, open a connection to Jabber
-    if (!osrfSystemBootstrapClientResc(config, context, "c_launcher")) {
+    if (!osrfSystemBootstrapClientResc(config, context, "client", 0)) {
         osrfLogError(OSRF_LOG_MARK,
             "Unable to bootstrap for host %s from configuration file %s",
             hostname, config);
@@ -337,7 +338,7 @@ int osrf_system_service_ctrl(
 	- Open a connection to Jabber.
 */
 int osrfSystemBootstrapClientResc( const char* config_file,
-		const char* contextnode, const char* resource ) {
+		const char* contextnode, const char* appname, int is_service ) {
 
 	int failure = 0;
 
@@ -452,6 +453,8 @@ int osrfSystemBootstrapClientResc( const char* config_file,
 
 	osrfLogInfo( OSRF_LOG_MARK, "Bootstrapping system with domain %s, port %d, and unixpath %s",
 		domain, iport, unixpath ? unixpath : "(none)" );
+
+    /*
 	transport_client* client = client_init( domain, iport, unixpath, 0 );
 
 	char host[HOST_NAME_MAX + 1] = "";
@@ -468,10 +471,21 @@ int osrfSystemBootstrapClientResc( const char* config_file,
 	char buf[len];
 	buf[0] = '\0';
 	snprintf(buf, len - 1, "%s_%s_%s_%ld", resource, host, tbuf, (long) getpid() );
+    */
 
-	if(client_connect( client, username, password, buf, 10, AUTH_DIGEST )) {
-		osrfGlobalTransportClient = client;
-	}
+	transport_client* client = client_init(domain, iport, unixpath);
+
+    if (appname == NULL) { appname = "client"; }
+
+    if (is_service) {
+	    if (client_connect_as_service(client, appname)) {
+		    osrfGlobalTransportClient = client;
+	    }
+    } else {
+	    if (client_connect(client, appname)) {
+		    osrfGlobalTransportClient = client;
+	    }
+    }
 
 	osrfStringArrayFree(arr);
 	free(actlog);

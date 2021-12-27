@@ -580,7 +580,8 @@ osrfAppSession* osrfAppSessionClientInit( const char* remote_service ) {
 		return NULL;
 	}
 
-	session->remote_id = strdup(target_buf);
+	//session->remote_id = strdup(target_buf);
+    session->remote_id = strdup(remote_service);
 	session->orig_remote_id = strdup(session->remote_id);
 	session->remote_service = strdup(remote_service);
 	session->session_locale = NULL;
