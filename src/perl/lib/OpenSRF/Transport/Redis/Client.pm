@@ -70,7 +70,7 @@ sub send {
 
     my $msg_json = $msg->to_json;
 
-    $logger->debug("send(): $msg_json");
+    $logger->internal("send(): $msg_json");
 
     my $offset = 0;
     my $msg_len = length($msg_json);
