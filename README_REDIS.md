@@ -49,7 +49,7 @@ sudo apt install redis-server libredis-perl libhiredis-dev
   instead of resulting in a not-found response.
 * Cannot query the router for active services.
   * Circ, for example, queries the router to see if Booking is running.
-    This can be addressed in other ways.
+    Could be addressed with an opensrf.xml setting for Circ.
 
 ## Private Service Security
 
