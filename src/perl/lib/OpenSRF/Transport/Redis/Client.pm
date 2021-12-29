@@ -8,9 +8,6 @@ use OpenSRF::Utils::JSON;
 use OpenSRF::Utils::Logger qw/$logger/;
 use OpenSRF::Transport::Redis::Message;
 
-my $OSRF_MSG_CHUNK_SIZE = 1024;
-my $END_OF_TEXT_CHAR = "\x{03}"; # ETX / End of Text
-
 sub new {
     my ($class, %params) = @_;
     my $self = bless({}, ref($class) || $class);
@@ -68,31 +65,13 @@ sub send {
     $msg->osrf_xid($logger->get_osrf_xid);
     $msg->from($self->bus_id);
 
+    $logger->internal("send() thread=" . $msg->thread);
+
     my $msg_json = $msg->to_json;
 
     $logger->internal("send(): $msg_json");
 
-    my $offset = 0;
-    my $msg_len = length($msg_json);
-
-    while (1) {
-        # Break the JSON up into chunks and push a stream of them.
-
-        my $chunk = substr($msg_json, $offset, $OSRF_MSG_CHUNK_SIZE);
-
-        $logger->info("to=".$msg->to." offset=$offset NET SENDING CHUNK: $chunk");
-
-        $offset += $OSRF_MSG_CHUNK_SIZE;
-
-        if ($offset < $msg_len) {
-            $self->redis->rpush($msg->to, $chunk);
-
-        } else { 
-            # EOM -- Append the final null byte
-            $self->redis->rpush($msg->to, $chunk . $END_OF_TEXT_CHAR);
-            last;
-        }
-    }
+    $self->redis->rpush($msg->to, $msg_json);
 }
 
 sub initialize {
@@ -165,39 +144,30 @@ sub process {
 sub recv {
     my ($self, $timeout) = @_;
 
-    my $to = $self->bus_id;
+    my $packet;
 
-    my $json = '';
-    while (1) {
-        my $packet;
+    if ($timeout == 0) {
+        # Non-blocking list pop
+        $packet = $self->redis->lpop($self->bus_id);
 
-        if ($timeout == 0) {
-            # Non-blocking list pop
-            $packet = $self->redis->lpop($to);
-
-        } else {
-            # In Redis, timeout 0 means wait indefinitely
-            $packet = $self->redis->blpop($to, $timeout == -1 ? 0 : $timeout);
-        }
-
-        # Timed out waiting for data.
-        return undef unless defined $packet;
-
-        my $text = ref $packet eq 'ARRAY' ? $packet->[1] : $packet;
-
-        $json .= $text;
-
-        if (substr($json, length($json) - 1, 1) eq $END_OF_TEXT_CHAR) { # EOM
-            chop($json); # remove the trailing null byte
-            last;
-        }
+    } else {
+        # In Redis, timeout 0 means wait indefinitely
+        $packet = $self->redis->blpop($self->bus_id, $timeout == -1 ? 0 : $timeout);
     }
 
+    # Timed out waiting for data.
+    return undef unless defined $packet;
+
+    my $json = ref $packet eq 'ARRAY' ? $packet->[1] : $packet;
+
     $logger->internal("recv() $json");
+
 
     my $msg = OpenSRF::Transport::Redis::Message->new(json => $json);
 
     return undef unless $msg;
+
+    $logger->internal("recv() thread=" . $msg->thread);
 
     # TODO
     # The upper layers assume the body is a JSON string.
