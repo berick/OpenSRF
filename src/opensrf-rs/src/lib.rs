@@ -1,6 +1,8 @@
-pub use self::error::Error;
-pub use self::conf::ClientConfig;
 /*
+pub use self::error;
+pub use self::conf;
+pub use self::message;
+pub use self::message;
 pub use self::bus::Bus;
 pub use self::server::Server;
 pub use self::method::Method;
@@ -10,11 +12,11 @@ pub use self::worker::RequestContext;
 pub use self::message::Request;
 */
 
-mod error;
-mod conf;
+pub mod error;
+pub mod conf;
+pub mod message;
 /*
 mod bus;
-mod message;
 mod method;
 mod worker;
 mod server;

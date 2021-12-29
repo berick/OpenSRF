@@ -1,39 +1,80 @@
 use std::fmt;
 
-// Derive is needed to do things like: let i = self.mtype as isize;
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum MessageType {
-    Request = 1, // value cascades
-    Response,
-    Continue,
-    RequestComplete,
-    Timeout,
+    Connect,
+    Request,
+    Result,
+    Status,
     Disconnect,
-    ServerError,
-    MethodNotFound,
-    Forbidden,
-    BadRequest,
+    Unknown,
 }
 
-// Rust can convert an enum variant to an isize, but not the other way
-// around, unless I just missed it.
-impl MessageType {
-    pub fn from_isize(i: isize) -> Option<Self> {
-        match i {
-            1  => Some(MessageType::Request),
-            2  => Some(MessageType::Response),
-            3  => Some(MessageType::Continue),
-            4  => Some(MessageType::RequestComplete),
-            5  => Some(MessageType::Timeout),
-            6  => Some(MessageType::Disconnect),
-            7  => Some(MessageType::ServerError),
-            8  => Some(MessageType::MethodNotFound),
-            9  => Some(MessageType::Forbidden),
-            10 => Some(MessageType::BadRequest),
-            _  => None
+impl From<&str> for MessageType {
+    fn from(s: &str) -> Self {
+        match s {
+            "CONNECT"    => MessageType::Connect,
+            "REQUEST"    => MessageType::Request,
+            "RESULT"     => MessageType::Result,
+            "STATUS"     => MessageType::Status,
+            "DISCONNECT" => MessageType::Disconnect,
+            _            => MessageType::Unknown,
         }
     }
 }
+
+
+// Derive is needed to do things like: let i = self.mtype as isize;
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub enum MessageStatus {
+    Continue            = 100,
+    Ok                  = 200,
+    Accepted            = 202,
+    Nocontent           = 204,
+    Complete            = 205,
+    Partial             = 206,
+    Redirected          = 307,
+    BadRequest          = 400,
+    Unauthorized        = 401,
+    Forbidden           = 403,
+    NotFound            = 404,
+    NotAllowed          = 405,
+    Timeout             = 408,
+    Expfailed           = 417,
+    InternalServErerror = 500,
+    NotImplemented      = 501,
+    ServiceUnavailable  = 503,
+    VersionNotSupported = 505,
+    Unknown,
+}
+
+impl From<isize> for MessageStatus {
+    fn from(num: isize) -> Self {
+        match num {
+            100 => MessageStatus::Continue,
+            200 => MessageStatus::Ok,
+            202 => MessageStatus::Accepted,
+            204 => MessageStatus::Nocontent,
+            205 => MessageStatus::Complete,
+            206 => MessageStatus::Partial,
+            307 => MessageStatus::Redirected,
+            400 => MessageStatus::BadRequest,
+            401 => MessageStatus::Unauthorized,
+            403 => MessageStatus::Forbidden,
+            404 => MessageStatus::NotFound,
+            405 => MessageStatus::NotAllowed,
+            408 => MessageStatus::Timeout,
+            417 => MessageStatus::Expfailed,
+            500 => MessageStatus::InternalServErerror,
+            501 => MessageStatus::NotImplemented,
+            503 => MessageStatus::ServiceUnavailable,
+            505 => MessageStatus::VersionNotSupported,
+            _   => MessageStatus::Unknown,
+        }
+    }
+}
+
+/*
 
 impl fmt::Display for MessageType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -60,13 +101,17 @@ impl Payload {
     }
 }
 
+*/
+
 pub struct Message {
     to: String,
     from: String,
     mtype: MessageType,
     req_id: u64,
-    payload: Payload,
+    //payload: Payload,
 }
+
+/*
 
 impl Message {
 
@@ -326,5 +371,6 @@ impl Request {
     }
 }
 
+*/
 
 
