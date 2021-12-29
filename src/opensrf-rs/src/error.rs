@@ -1,0 +1,48 @@
+use std::error;
+use std::fmt;
+use redis;
+use json;
+
+#[derive(Debug)]
+pub enum Error {
+
+    /// Invalid configuration file/value
+    ClientConfigError,
+
+    /// Error occurred during network communication
+    BusError(redis::RedisError),
+
+    /// General purpose JSON parsing, etc. error.
+    JsonError(json::Error),
+}
+
+use self::Error::*;
+
+impl error::Error for Error {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        match *self {
+            BusError(ref err) => Some(err),
+            JsonError(ref err) => Some(err),
+            _ => None
+        }
+    }
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match *self {
+            BusError(ref err) => err.fmt(f),
+            JsonError(ref err) => err.fmt(f),
+            ClientConfigError => write!(f, "configuration error"),
+        }
+    }
+}
+
+impl From<redis::RedisError> for Error {
+    fn from(inner: redis::RedisError) -> Error {
+        BusError(inner)
+    }
+}
+
+
+
