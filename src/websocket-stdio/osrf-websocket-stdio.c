@@ -75,8 +75,6 @@
 // default values, replaced during setup (below) as needed.
 static char* config_file = "/openils/conf/opensrf_core.xml";
 static char* config_ctxt = "gateway";
-static char* osrf_router = NULL;
-static char* osrf_domain = NULL;
 
 // Cache of opensrf thread strings and back-end receipients.
 // Tracking this here means the caller only needs to track the thread.
@@ -91,8 +89,6 @@ static osrfStringArray* active_threads = NULL;
 static growing_buffer* stdin_buf = NULL;
 // OpenSRF XMPP connection handle
 static transport_client* osrf_handle = NULL;
-// Reusable string buf for recipient addresses
-static char recipient_buf[RECIP_BUF_SIZE];
 // Websocket client IP address (for logging)
 static char* client_ip = NULL;
 
@@ -273,11 +269,8 @@ static void child_init(int argc, char* argv[]) {
         shut_it_down(1);
     }
 
-	osrf_handle = osrfSystemGetTransportClient();
-	osrfAppSessionSetIngress(WEBSOCKET_INGRESS);
-
-    osrf_router = osrfConfigGetValue(NULL, "/router_name");
-    osrf_domain = osrfConfigGetValue(NULL, "/domain");
+    osrf_handle = osrfSystemGetTransportClient();
+    osrfAppSessionSetIngress(WEBSOCKET_INGRESS);
 
     stateful_session_cache = osrfNewHash();
     osrfHashSetCallback(stateful_session_cache, release_hash_string);
@@ -443,9 +436,7 @@ static void relay_stdin_message(const char* msg_string) {
     if (!recipient) {
 
         if (service) {
-            int size = snprintf(recipient_buf, RECIP_BUF_SIZE - 1, "%s", service);
-            recipient_buf[size] = '\0';
-            recipient = recipient_buf;
+            recipient = service; // dupe'd below
 
         } else {
             osrfLogWarning(OSRF_LOG_MARK, "WS Unable to determine recipient");
