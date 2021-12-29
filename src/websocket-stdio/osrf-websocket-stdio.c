@@ -89,6 +89,8 @@ static osrfStringArray* active_threads = NULL;
 static growing_buffer* stdin_buf = NULL;
 // OpenSRF XMPP connection handle
 static transport_client* osrf_handle = NULL;
+// Reusable string buf for recipient addresses
+static char recipient_buf[RECIP_BUF_SIZE];
 // Websocket client IP address (for logging)
 static char* client_ip = NULL;
 
@@ -269,8 +271,8 @@ static void child_init(int argc, char* argv[]) {
         shut_it_down(1);
     }
 
-    osrf_handle = osrfSystemGetTransportClient();
-    osrfAppSessionSetIngress(WEBSOCKET_INGRESS);
+	osrf_handle = osrfSystemGetTransportClient();
+	osrfAppSessionSetIngress(WEBSOCKET_INGRESS);
 
     stateful_session_cache = osrfNewHash();
     osrfHashSetCallback(stateful_session_cache, release_hash_string);
@@ -436,7 +438,10 @@ static void relay_stdin_message(const char* msg_string) {
     if (!recipient) {
 
         if (service) {
-            recipient = service; // dupe'd below
+            size_t len = strlen(service);
+            memcpy(recipient_buf, service, len);
+            recipient_buf[len] = '\0';
+            recipient = recipient_buf;
 
         } else {
             osrfLogWarning(OSRF_LOG_MARK, "WS Unable to determine recipient");
