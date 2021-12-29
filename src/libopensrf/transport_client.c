@@ -93,33 +93,16 @@ int client_send_message(transport_client* client, transport_message* msg) {
 
     message_prepare_json(msg);
 
-    // LOOP
-    // OSRF_MSG_BUS_CHUNK_SIZE
-    int offset = 0;
-    int msg_len = strlen(msg->msg_json);
+    osrfLogInternal(OSRF_LOG_MARK, "client_send_message() %s", msg->msg_json);
 
-    while (offset < msg_len) {
+    redisReply *reply = 
+        redisCommand(client->bus, "RPUSH %s %s", msg->recipient, msg->msg_json);
 
-        char chunk[OSRF_MSG_BUS_CHUNK_SIZE + 1];
-        chunk[OSRF_MSG_BUS_CHUNK_SIZE] = '\0';
-        strncpy(chunk, msg->msg_json + offset, OSRF_MSG_BUS_CHUNK_SIZE);
+    if (handle_redis_error(reply)) { return -1; }
 
-        offset += OSRF_MSG_BUS_CHUNK_SIZE;
+    osrfLogInternal(OSRF_LOG_MARK, "client_send_message() send completed");
 
-        osrfLogInternal(OSRF_LOG_MARK, "Sending to: %s => %s", msg->recipient, chunk);
-
-        redisReply *reply;
-        if (offset < msg_len) {
-            reply = redisCommand(client->bus, "RPUSH %s %s", msg->recipient, chunk);
-        } else {
-            // Final chunk. Append ETX / End Of Text character
-            reply = redisCommand(client->bus, "RPUSH %s %s\x03", msg->recipient, chunk);
-        }
-
-        if (handle_redis_error(reply)) { return -1; }
-
-        freeReplyObject(reply);
-    }
+    freeReplyObject(reply);
     
     return 0;
 }
@@ -148,26 +131,32 @@ static int handle_redis_error(redisReply* reply) {
 char* recv_one_chunk(transport_client* client, int timeout) {
 	if (client == NULL || client->bus == NULL) { return NULL; }
 
-    redisReply* reply = NULL;
+    size_t len = 0;
+    char command_buf[256];
 
     if (timeout == 0) { // Non-blocking list pop
 
-        reply = redisCommand(client->bus, "LPOP %s", client->bus_id);
-        if (handle_redis_error(reply)) { return NULL; }
+        len = snprintf(command_buf, 256, "LPOP %s", client->bus_id);
 
     } else {
         
         if (timeout < 0) { // Block indefinitely
 
-            reply = redisCommand(client->bus, "BLPOP %s 0", client->bus_id);
-            if (handle_redis_error(reply)) { return NULL; }
+            len = snprintf(command_buf, 256, "BLPOP %s 0", client->bus_id);
 
         } else { // Block up to timeout seconds
 
-            reply = redisCommand(client->bus, "BLPOP %s %d", client->bus_id, timeout);
-            if (handle_redis_error(reply)) { return NULL; }
+            len = snprintf(command_buf, 256, "BLPOP %s %d", client->bus_id, timeout);
         }
     }
+
+    command_buf[len] = '\0';
+
+    osrfLogInternal(OSRF_LOG_MARK, 
+        "recv_one_chunk() sending command: %s", command_buf);
+
+    redisReply* reply = redisCommand(client->bus, command_buf);
+    if (handle_redis_error(reply)) { return NULL; }
 
     char* json = NULL;
     if (reply->type == REDIS_REPLY_STRING) { // LPOP
@@ -186,46 +175,29 @@ char* recv_one_chunk(transport_client* client, int timeout) {
 
     freeReplyObject(reply);
 
+    osrfLogInternal(OSRF_LOG_MARK, "recv_one_chunk() read json: %s", json);
+
     return json;
 }
 
-/// Returns at most one JSON value pulled from the bus or nULL if
+/// Returns at most one JSON value pulled from the bus or NULL if
 /// the list pop times out or the pop is interrupted by a signal.
 jsonObject* recv_one_value(transport_client* client, int timeout) {
 
-    size_t len = 0;
-    growing_buffer *gbuf = buffer_init(OSRF_MSG_BUS_CHUNK_SIZE);
+    char* json = recv_one_chunk(client, timeout);
 
-    while (1) {
-        char* chunk = recv_one_chunk(client, timeout);
-
-        if (chunk == NULL) {
-            // Receive timed out or interrupted
-            buffer_free(gbuf);
-            return NULL;
-        }
-
-        len = buffer_add(gbuf, chunk);
-        free(chunk);
-
-        if (strcmp(gbuf->buf + len - 1, END_OF_TEXT_CHAR) == 0) {
-            // Each JSON string will be terminated by the end-of-text
-            // character and it will always be the last character in
-            // any bus response.
-            break;
-        }
+    if (json == NULL) {
+        // recv() timed out.
+        return NULL;
     }
 
-    // Replace the end-of-text char with an end-of string for JSON parsing.
-    gbuf->buf[len - 1] = '\0';
-
-    jsonObject* obj = jsonParse(gbuf->buf);
+    jsonObject* obj = jsonParse(json);
 
     if (obj == NULL) {
-        osrfLogWarning(OSRF_LOG_MARK, "Error parsing JSON: %s", gbuf->buf);
+        osrfLogWarning(OSRF_LOG_MARK, "Error parsing JSON: %s", json);
     }
 
-    buffer_free(gbuf);
+    free(json);
 
     return obj;
 }
@@ -271,7 +243,7 @@ transport_message* client_recv(transport_client* client, int timeout) {
 
     // TODO no need for intermediate to/from JSON.  Create transport
     // message directly from received JSON object.
-    jsonObject* obj = recv_one_value(client, timeout);
+    jsonObject* obj = recv_json_value(client, timeout);
 
     if (obj == NULL) { return NULL; } // Receive timed out.
 
@@ -280,6 +252,9 @@ transport_message* client_recv(transport_client* client, int timeout) {
 	transport_message* msg = new_message_from_json(json);
 
     free(json);
+
+    osrfLogInternal(OSRF_LOG_MARK, 
+        "client_recv() read response for thread %s", msg->thread);
 
 	return msg;
 }

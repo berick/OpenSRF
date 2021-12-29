@@ -1,9 +1,6 @@
 #ifndef TRANSPORT_CLIENT_H
 #define TRANSPORT_CLIENT_H
 
-#define OSRF_MSG_BUS_CHUNK_SIZE 1024
-#define END_OF_TEXT_CHAR "\x03"
-
 /**
 	@file transport_client.h
 	@brief Header for implementation of transport_client.
