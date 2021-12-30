@@ -15,8 +15,9 @@ pub use self::message::Request;
 pub mod error;
 pub mod conf;
 pub mod message;
+pub mod bus;
+
 /*
-mod bus;
 mod method;
 mod worker;
 mod server;

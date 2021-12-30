@@ -44,7 +44,6 @@ impl BusConfig {
     pub fn set_sock(&mut self, sock: &str) {
         self.sock = Some(String::from(sock));
     }
-
 }
 
 #[derive(Debug, Clone)]
@@ -55,10 +54,10 @@ enum LogFile {
 
 #[derive(Debug, Clone)]
 enum LogLevel {
-    Error = 1,
-    Warning = 2,
-    Info = 3,
-    Debug = 4,
+    Error    = 1,
+    Warning  = 2,
+    Info     = 3,
+    Debug    = 4,
     Internal = 5,
 }
 
@@ -68,7 +67,7 @@ pub struct ClientConfig {
     log_file: LogFile,
     log_level: LogLevel,
     syslog_facility: Option<String>,
-    act_log_facility: Option<String>,
+    actlog_facility: Option<String>,
     settings_file: Option<String>
 }
 
@@ -80,7 +79,7 @@ impl ClientConfig {
             log_file: LogFile::Syslog,
             log_level: LogLevel::Info,
             syslog_facility: None,
-            act_log_facility: None,
+            actlog_facility: None,
             settings_file: None,
         }
     }
