@@ -12,6 +12,9 @@ pub enum Error {
     /// Error occurred during network communication
     BusError(redis::RedisError),
 
+    /// Something in the code doesn't make sense
+    InternalApiError(&'static str),
+
     /// General purpose JSON parsing, etc. error.
     JsonError(json::Error),
 }
@@ -33,6 +36,7 @@ impl fmt::Display for Error {
         match *self {
             BusError(ref err) => err.fmt(f),
             JsonError(ref err) => err.fmt(f),
+            InternalApiError(s) => write!(f, "internal api error: {}", s),
             ClientConfigError => write!(f, "configuration error"),
         }
     }
