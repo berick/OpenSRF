@@ -1,5 +1,10 @@
 use std::fmt;
 
+const DEFAULT_LOCALE: &str = "en-US";
+const DEFAULT_TIMEZONE: &str = "America/New_York";
+const DEFAULT_API_LEVEL: u8 = 1;
+const DEFAULT_INGRESS: &str = "opensrf";
+
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum MessageType {
     Connect,
@@ -115,11 +120,10 @@ impl fmt::Display for MessageStatus {
     }
 }
 
-
 pub enum Payload {
     Method(Method),
     Result(Result),
-    Error(String),
+    Status(Status),
     NoPayload,
 }
 
@@ -128,33 +132,37 @@ impl Payload {
         match self {
             Payload::Method(pl) => pl.to_json_value(),
             Payload::Result(pl) => pl.to_json_value(),
-            Payload::Error(err) => json::from(err.clone()),
+            Payload::Status(pl) => pl.to_json_value(),
             Payload::NoPayload => json::JsonValue::Null,
         }
     }
 }
 
 pub struct Message {
-    to: String,
-    from: String,
     mtype: MessageType,
-    req_id: u64,
+    thread_trace: u64,
+    locale: String,
+    timezone: String,
+    api_level: u8,
+    ingress: String,
     payload: Payload,
 }
 
-/*
-
 impl Message {
 
-    pub fn new(to: &str, from: &str, req_id: u64, mtype: MessageType, payload: Payload) -> Self {
+    pub fn new(mtype: MessageType, thread_trace: u64, payload: Payload) -> Self {
         Message {
-            to: String::from(to),
-            from: String::from(from),
-            req_id,
             mtype,
+            thread_trace,
             payload,
+            api_level: DEFAULT_API_LEVEL,
+            locale: DEFAULT_LOCALE.to_string(),
+            timezone: DEFAULT_TIMEZONE.to_string(),
+            ingress: DEFAULT_INGRESS.to_string(),
         }
     }
+}
+/*
 
     /// Creates a Message from a JSON value.
     ///
@@ -171,7 +179,7 @@ impl Message {
             None => { return None; }
         };
 
-        let req_id = match json_obj["req_id"].as_u64() {
+        let thread_trace = match json_obj["thread_trace"].as_u64() {
             Some(i) => i,
             None => { return None; }
         };
@@ -193,14 +201,14 @@ impl Message {
         };
 
         if let Payload::Request(ref mut req) = payload {
-            // Propagate the req_id into the request
-            req.set_req_id(req_id);
+            // Propagate the thread_trace into the request
+            req.set_thread_trace(thread_trace);
         };
 
         Some(Message {
             to: to.to_string(),
             from: from.to_string(),
-            req_id: req_id,
+            thread_trace: thread_trace,
             mtype: mtype,
             payload: payload
         })
@@ -245,7 +253,7 @@ impl Message {
         let mut obj = json::object!{
             to: json::from(self.to()),
             from: json::from(self.from()),
-            req_id: json::from(self.req_id),
+            thread_trace: json::from(self.thread_trace),
             mtype: json::from(self.mtype as isize),
         };
 
@@ -267,8 +275,8 @@ impl Message {
         &self.from
     }
 
-    pub fn req_id(&self) -> u64 {
-        self.req_id
+    pub fn thread_trace(&self) -> u64 {
+        self.thread_trace
     }
 
     pub fn mtype(&self) -> MessageType {
@@ -338,17 +346,69 @@ impl Result {
 
     pub fn to_json_value(&self) -> json::JsonValue {
         json::object!{
+            status: json::from(self.status_label.clone()),
+            statusCode: json::from(self.status as isize),
             content: self.content.clone(),
         }
     }
 }
+
+#[derive(Debug, Clone)]
+pub struct Status {
+    status: MessageStatus,
+    status_label: String,
+}
+
+impl Status {
+
+    pub fn new(status: MessageStatus, status_label: &str) -> Self {
+        Status {
+            status,
+            status_label: status_label.to_string(),
+        }
+    }
+
+    pub fn status(&self) -> &MessageStatus {
+        &self.status
+    }
+
+    pub fn status_label(&self) -> &str {
+        &self.status_label
+    }
+
+    pub fn from_json_value(json_obj: &json::JsonValue) -> Option<Self> {
+
+        let code = match json_obj["statusCode"].as_isize() {
+            Some(c) => c,
+            None => { return None; },
+        };
+
+        let stat: MessageStatus = code.into();
+
+        // If the message contains a status label, use it, otherwise
+        // use the label associated locally with the status code
+        let stat_str: &str = match json_obj["status"].as_str() {
+            Some(s) => &s,
+            None => stat.into(),
+        };
+
+        Some(Status::new(stat, stat_str))
+    }
+
+    pub fn to_json_value(&self) -> json::JsonValue {
+        json::object!{
+            status: json::from(self.status_label.clone()),
+            statusCode: json::from(self.status as isize),
+        }
+    }
+}
+
 
 /// A single API request with method name and parameters.
 pub struct Method {
     method: String,
     params: Vec<json::JsonValue>,
 }
-
 
 impl Method {
 
