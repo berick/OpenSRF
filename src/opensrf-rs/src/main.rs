@@ -10,10 +10,16 @@ fn main() {
 
     println!("s = {:?}", ss);
 
+    println!("s = {}", ss);
+
     let t = MessageType::Connect;
 
     //println!("s = {}", s as isize);
 
     let mtype: MessageType = "CONNECT".into();
-    println!("t = {:?}", mtype);
+    println!("t = {}", mtype);
+
+    let mtype_str: &str = mtype.into();
+
+    println!("t = {}", mtype_str);
 }
