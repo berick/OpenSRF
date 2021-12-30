@@ -138,6 +138,106 @@ impl Payload {
     }
 }
 
+pub struct TransportMessage {
+    to: String,
+    from: String,
+    thread: String,
+    osrf_xid: String,
+    body: Vec<Message>,
+}
+
+impl TransportMessage {
+    pub fn new(to: &str, from: &str, thread: &str) -> Self {
+        TransportMessage {
+            to: to.to_string(),
+            from: from.to_string(),
+            thread: thread.to_string(),
+            osrf_xid: String::from(""),
+            body: Vec::new()
+        }
+    }
+
+    pub fn to(&self) -> &str {
+        &self.to
+    }
+
+    pub fn from(&self) -> &str {
+        &self.from
+    }
+
+    pub fn thread(&self) -> &str {
+        &self.thread
+    }
+
+    pub fn body(&self) -> &Vec<Message> {
+        &self.body
+    }
+
+    pub fn body_as_mut(&mut self) -> &mut Vec<Message> {
+        &mut self.body
+    }
+
+    pub fn osrf_xid(&self) -> &str {
+        &self.osrf_xid
+    }
+
+    pub fn set_osrf_xid(&mut self, xid: &str) {
+        self.osrf_xid = xid.to_string()
+    }
+
+    pub fn from_json_value(json_obj: &json::JsonValue) -> Option<Self> {
+
+        let to = match json_obj["to"].as_str() {
+            Some(i) => i,
+            None => { return None; }
+        };
+
+        let from = match json_obj["from"].as_str() {
+            Some(i) => i,
+            None => { return None; }
+        };
+
+        let thread = match json_obj["thread"].as_str() {
+            Some(i) => i,
+            None => { return None; }
+        };
+
+        let mut tmsg = TransportMessage::new(&to, &from, &thread);
+
+        if let Some(xid) = json_obj["osrf_xid"].as_str() {
+            tmsg.set_osrf_xid(xid);
+        };
+
+        if let json::JsonValue::Array(ref arr) = json_obj["body"] {
+            for body in arr {
+                if let Some(b) = Message::from_json_value(&body) {
+                    tmsg.body_as_mut().push(b);
+                }
+            }
+        }
+
+        Some(tmsg)
+    }
+
+    pub fn to_json_value(&self) -> json::JsonValue {
+
+        let mut body_arr = json::JsonValue::new_array();
+
+        for body in self.body() {
+            body_arr.push(body.to_json_value());
+        }
+
+        let mut obj = json::object!{
+            to: json::from(self.to.clone()),
+            from: json::from(self.from.clone()),
+            thread: json::from(self.thread.clone()),
+            body: body_arr,
+        };
+
+        obj
+    }
+}
+
 pub struct Message {
     mtype: MessageType,
     thread_trace: u64,
