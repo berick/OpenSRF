@@ -15,6 +15,12 @@ pub enum MessageType {
     Unknown,
 }
 
+/// Create a MessageType from the string that would be found in a message.
+///
+/// ```
+/// let mt: opensrf::message::MessageType = "REQUEST".into();
+/// assert_eq!(mt, opensrf::message::MessageType::Request);
+/// ```
 impl From<&str> for MessageType {
     fn from(s: &str) -> Self {
         match s {
@@ -28,6 +34,13 @@ impl From<&str> for MessageType {
     }
 }
 
+/// Create the string that will be used within the serialized message
+/// for a given MessageType
+///
+/// ```
+/// let s: &str = opensrf::message::MessageType::Request.into();
+/// assert_eq!(s, "REQUEST");
+/// ```
 impl Into<&'static str> for MessageType {
 	fn into(self) -> &'static str {
         match self {
@@ -72,6 +85,12 @@ pub enum MessageStatus {
     Unknown,
 }
 
+/// Translate a code number into a MessageStatus
+///
+/// ```
+/// let ms: opensrf::message::MessageStatus = 205.into();
+/// assert_eq!(ms, opensrf::message::MessageStatus::Complete);
+/// ```
 impl From<isize> for MessageStatus {
     fn from(num: isize) -> Self {
         match num {
@@ -98,6 +117,12 @@ impl From<isize> for MessageStatus {
     }
 }
 
+/// Translate a MessageStatus into its serialized display label
+///
+/// ```
+/// let s: &str = opensrf::message::MessageStatus::Continue.into();
+/// assert_eq!(s, "Continue");
+/// ```
 impl Into<&'static str> for MessageStatus {
 	fn into(self) -> &'static str {
         match self {
@@ -516,6 +541,20 @@ impl Method {
         }
     }
 
+    /// Create a Method from a JsonValue.
+    ///
+    ///```
+    /// use opensrf::message::Method;
+    /// let api = "opensrf.system.echo";
+    ///
+    /// let jv = json::object!{
+    ///   method: json::from(api.to_string()),
+    ///   params: vec![json::from(String::from("Hello"))]
+    /// };
+    ///
+    /// let m: Method = Method::from_json_value(&jv).unwrap();
+    /// assert_eq!(m.method(), api);
+    ///```
     pub fn from_json_value(json_obj: &json::JsonValue) -> Option<Self> {
 
         let method = match json_obj["method"].as_str() {
@@ -543,6 +582,22 @@ impl Method {
         &self.params
     }
 
+    /// Create a JsonValue from a Method
+    ///
+    /// ```
+    /// use opensrf::message::Method;
+    /// let api = "opensrf.system.echo";
+    ///
+    /// let m = Method::new(api, vec![json::from(String::from("Hello"))]);
+    ///
+    /// let jv = m.to_json_value();
+    ///
+    /// assert_eq!(jv["method"].as_str().unwrap(), api);
+    /// assert!(jv["params"].is_array());
+    ///
+    /// let first = &jv["params"][0];
+    /// assert_eq!(first.as_str().unwrap(), "Hello");
+    /// ```
     pub fn to_json_value(&self) -> json::JsonValue {
 
         // Clone the params so the new json object can absorb them.
