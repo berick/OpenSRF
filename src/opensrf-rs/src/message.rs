@@ -161,38 +161,67 @@ impl Message {
             ingress: DEFAULT_INGRESS.to_string(),
         }
     }
-}
-/*
+
+    pub fn mtype(&self) -> &MessageType {
+        &self.mtype
+    }
+
+    pub fn thread_trace(&self) -> u64 {
+        self.thread_trace
+    }
+
+    pub fn payload(&self) -> &Payload {
+        &self.payload
+    }
+
+    pub fn api_level(&self) -> u8 {
+        self.api_level
+    }
+
+    pub fn set_api_level(&mut self, level: u8) {
+        self.api_level = level;
+    }
+
+    pub fn locale(&self) -> &str {
+        &self.locale
+    }
+
+    pub fn set_locale(&mut self, locale: &str) {
+        self.locale = locale.to_string()
+    }
+
+    pub fn timezone(&self) -> &str {
+        &self.timezone
+    }
+
+    pub fn set_timezone(&mut self, timezone: &str) {
+        self.timezone = timezone.to_string()
+    }
+
+    pub fn ingress(&self) -> &str {
+        &self.ingress
+    }
+
+    pub fn set_ingress(&mut self, ingress: &str) {
+        self.ingress = ingress.to_string()
+    }
 
     /// Creates a Message from a JSON value.
     ///
     /// Returns None if the JSON value cannot be coerced into a Message.
     pub fn from_json_value(json_obj: &json::JsonValue) -> Option<Self> {
 
-        let to = match json_obj["to"].as_str() {
-            Some(s) => s,
-            None => { return None; }
-        };
-
-        let from = match json_obj["from"].as_str() {
-            Some(s) => s,
-            None => { return None; }
-        };
-
         let thread_trace = match json_obj["thread_trace"].as_u64() {
             Some(i) => i,
             None => { return None; }
         };
 
-        let mtype_num = match json_obj["mtype"].as_isize() {
+        let mtype_str = match json_obj["type"].as_str() {
             Some(s) => s,
             None => { return None; }
         };
 
-        let mtype = match MessageType::from_isize(mtype_num) {
-            Some(mt) => mt,
-            None => { return None; }
-        };
+        let mtype: MessageType = mtype_str.into();
 
         let mut payload = match
             Message::payload_from_json_value(mtype, &json_obj["payload"]) {
@@ -200,18 +229,11 @@ impl Message {
             None => { return None; }
         };
 
-        if let Payload::Request(ref mut req) = payload {
-            // Propagate the thread_trace into the request
-            req.set_thread_trace(thread_trace);
-        };
+        let mut msg = Message::new(mtype, thread_trace, payload);
 
-        Some(Message {
-            to: to.to_string(),
-            from: from.to_string(),
-            thread_trace: thread_trace,
-            mtype: mtype,
-            payload: payload
-        })
+        // TODO set locale, etc.
+
+        Some(msg)
     }
 
     fn payload_from_json_value(mtype: MessageType,
@@ -220,41 +242,39 @@ impl Message {
         match mtype {
 
             MessageType::Request => {
-                match Request::from_json_value(payload_obj) {
-                    Some(req) => Some(Payload::Request(req)),
+                match Method::from_json_value(payload_obj) {
+                    Some(method) => Some(Payload::Method(method)),
                     _ => None
                 }
             },
 
-            MessageType::Response => {
-                match Response::from_json_value(payload_obj) {
-                    Some(resp) => Some(Payload::Response(resp)),
+            MessageType::Result => {
+                match Result::from_json_value(payload_obj) {
+                    Some(res) => Some(Payload::Result(res)),
                     _ => None
                 }
             },
 
-            _ => {
-                // Assumes any payload that is a bare string is an error message.
-                if payload_obj.is_string() {
-                    Some(Payload::Error(payload_obj.as_str().unwrap().to_string()))
-                } else {
-                    Some(Payload::NoPayload)
+            MessageType::Status => {
+                match Status::from_json_value(payload_obj) {
+                    Some(stat) => Some(Payload::Status(stat)),
+                    _ => None
                 }
-            }
+            },
+
+            _ => Some(Payload::NoPayload),
         }
-    }
-
-    pub fn to_json(&self) -> String {
-        self.to_json_value().dump()
     }
 
     pub fn to_json_value(&self) -> json::JsonValue {
 
         let mut obj = json::object!{
-            to: json::from(self.to()),
-            from: json::from(self.from()),
-            thread_trace: json::from(self.thread_trace),
-            mtype: json::from(self.mtype as isize),
+            threadTrace: json::from(self.thread_trace),
+            type: json::from(self.mtype as isize),
+            locale: json::from(self.locale.clone()),
+            timezone: json::from(self.timezone.clone()),
+            api_level: json::from(self.api_level),
+            ingress: json::from(self.ingress.clone()),
         };
 
         match self.payload {
@@ -265,30 +285,7 @@ impl Message {
 
         obj
     }
-
-
-    pub fn to(&self) -> &str {
-        &self.to
-    }
-
-    pub fn from(&self) -> &str {
-        &self.from
-    }
-
-    pub fn thread_trace(&self) -> u64 {
-        self.thread_trace
-    }
-
-    pub fn mtype(&self) -> MessageType {
-        self.mtype
-    }
-
-    pub fn payload(&self) -> &Payload {
-        &self.payload
-    }
 }
-
-*/
 
 /// Delivers a single API response.
 ///
