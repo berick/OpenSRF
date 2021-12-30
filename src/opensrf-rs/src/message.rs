@@ -23,6 +23,25 @@ impl From<&str> for MessageType {
     }
 }
 
+impl Into<&'static str> for MessageType {
+	fn into(self) -> &'static str {
+        match self {
+            MessageType::Connect    => "CONNECT",
+            MessageType::Request    => "REQUEST",
+            MessageType::Result     => "RESULT",
+            MessageType::Status     => "STATUS",
+            MessageType::Disconnect => "DISCONNECT",
+            _                       => "UNKNOWN"
+        }
+    }
+}
+
+impl fmt::Display for MessageType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let s: &str = (*self).into();
+        write!(f, "{}", s)
+    }
+}
 
 // Derive is needed to do things like: let i = self.mtype as isize;
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -74,41 +93,53 @@ impl From<isize> for MessageStatus {
     }
 }
 
-/*
-
-impl fmt::Display for MessageType {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", *self as isize)
+impl Into<&'static str> for MessageStatus {
+	fn into(self) -> &'static str {
+        match self {
+            MessageStatus::Ok                   => "OK",
+            MessageStatus::Continue             => "Continue",
+            MessageStatus::Complete             => "Request Complete",
+            MessageStatus::BadRequest           => "Bad Request",
+            MessageStatus::Timeout              => "Timeout",
+            MessageStatus::NotFound             => "Not Found",
+            MessageStatus::NotAllowed           => "Not Allowed",
+            MessageStatus::InternalServErerror  => "Internal Server Error",
+            _                                   => "See Status Code",
+        }
     }
 }
 
+impl fmt::Display for MessageStatus {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "({}) {:?}", *self as isize, self)
+    }
+}
+
+
 pub enum Payload {
-    Request(Request),
-    Response(Response),
+    Method(Method),
+    Result(Result),
     Error(String),
     NoPayload,
 }
 
 impl Payload {
-
     pub fn to_json_value(&self) -> json::JsonValue {
         match self {
-            Payload::Request(pl) => pl.to_json_value(),
-            Payload::Response(pl) => pl.to_json_value(),
-            Payload::Error(pl) => json::from(pl.clone()),
+            Payload::Method(pl) => pl.to_json_value(),
+            Payload::Result(pl) => pl.to_json_value(),
+            Payload::Error(err) => json::from(err.clone()),
             Payload::NoPayload => json::JsonValue::Null,
         }
     }
 }
-
-*/
 
 pub struct Message {
     to: String,
     from: String,
     mtype: MessageType,
     req_id: u64,
-    //payload: Payload,
+    payload: Payload,
 }
 
 /*
@@ -249,63 +280,80 @@ impl Message {
     }
 }
 
+*/
+
 /// Delivers a single API response.
 ///
 /// Each Request will have zero or more associated Response messages.
-#[derive(Clone)]
-pub struct Response {
+#[derive(Debug, Clone)]
+pub struct Result {
+    status: MessageStatus,
+
+    status_label: String,
+
     /// API response value.
-    value: json::JsonValue,
+    content: json::JsonValue,
 }
 
-impl Response {
+impl Result {
 
-    pub fn new(value: json::JsonValue) -> Self {
-        Response {
-            value,
+    pub fn new(status: MessageStatus, status_label: &str, content: json::JsonValue) -> Self {
+        Result {
+            status,
+            content,
+            status_label: status_label.to_string(),
         }
     }
 
-    pub fn value(&self) -> &json::JsonValue {
-        &self.value
+    pub fn content(&self) -> &json::JsonValue {
+        &self.content
+    }
+
+    pub fn status(&self) -> &MessageStatus {
+        &self.status
+    }
+
+    pub fn status_label(&self) -> &str {
+        &self.status_label
     }
 
     pub fn from_json_value(json_obj: &json::JsonValue) -> Option<Self> {
 
-        // A response must have a 'value', even if it's a NULL.
-        if !json_obj.has_key("value") { return None; }
+        let code = match json_obj["statusCode"].as_isize() {
+            Some(c) => c,
+            None => { return None; },
+        };
 
-        Some(Response::new(json_obj["value"].clone()))
+        let stat: MessageStatus = code.into();
+
+        // If the message contains a status label, use it, otherwise
+        // use the label associated locally with the status code
+        let stat_str: &str = match json_obj["status"].as_str() {
+            Some(s) => &s,
+            None => stat.into(),
+        };
+
+        Some(Result::new(stat, stat_str, json_obj["content"].clone()))
     }
 
     pub fn to_json_value(&self) -> json::JsonValue {
         json::object!{
-            value: self.value.clone(),
+            content: self.content.clone(),
         }
     }
 }
 
-/// Delivers a single API request with method name and parameters.
-pub struct Request {
+/// A single API request with method name and parameters.
+pub struct Method {
     method: String,
     params: Vec<json::JsonValue>,
-    /// If true, caller requests stateful communication.
-    connect: bool,
-
-    /// Request also needs a copy of its ID so the higher level
-    /// API can access the value without maintaining a ref to the
-    /// wrapper message.
-    ///
-    /// This is not packaged in the JSON.
-    req_id: u64,
 }
 
-impl Request {
 
-    pub fn new(req_id: u64, method: &str, params: Vec<json::JsonValue>, connect: bool) -> Self {
-        Request {
-            req_id,
-            connect: connect,
+impl Method {
+
+    pub fn new(method: &str, params: Vec<json::JsonValue>) -> Self {
+        Method {
             params: params,
             method: String::from(method),
         }
@@ -318,21 +366,14 @@ impl Request {
             None => { return None; }
         };
 
-        let connect = match json_obj["connect"].as_bool() {
-            Some(b) => b,
-            None => { return None; }
-        };
-
         let ref params = json_obj["params"];
 
         if !params.is_array() { return None; }
 
         let p = params.members().map(|p| p.clone()).collect();
 
-        Some(Request {
+        Some(Method {
             method: method,
-            connect: connect,
-            req_id: 0,
             params: p
         })
     }
@@ -345,18 +386,6 @@ impl Request {
         &self.params
     }
 
-    pub fn connect(&self) -> bool {
-        self.connect
-    }
-
-    pub fn req_id(&self) -> u64 {
-        self.req_id
-    }
-
-    pub fn set_req_id(&mut self, req_id: u64) {
-        self.req_id = req_id;
-    }
-
     pub fn to_json_value(&self) -> json::JsonValue {
 
         // Clone the params so the new json object can absorb them.
@@ -366,11 +395,9 @@ impl Request {
         json::object!{
             method: json::from(self.method()),
             params: json::from(params),
-            connect: json::from(self.connect()),
         }
     }
 }
 
-*/
 
 
