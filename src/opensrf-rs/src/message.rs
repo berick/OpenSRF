@@ -338,12 +338,11 @@ impl Message {
     /// Returns None if the JSON value cannot be coerced into a Message.
     pub fn from_json_value(json_obj: &json::JsonValue) -> Option<Self> {
 
-        let msg_wrapper: super::json::JsonWithClass =
-            match super::json::JsonWithClass::decode(json_obj) {
+        let msg_wrapper: super::classified::JsonWithClass =
+            match super::classified::JsonWithClass::decode(json_obj) {
             Some(sm) => sm,
             None => { return None; }
         };
-
 
         let msg_class = msg_wrapper.class();
         let msg_hash = msg_wrapper.json();
@@ -436,7 +435,7 @@ impl Message {
             _ => obj["payload"] = self.payload.to_json_value(),
         }
 
-        super::json::JsonWithClass::encode(&obj, &self.msg_class)
+        super::classified::JsonWithClass::encode(&obj, &self.msg_class)
     }
 }
 
@@ -483,8 +482,8 @@ impl Result {
 
     pub fn from_json_value(json_obj: &json::JsonValue) -> Option<Self> {
 
-        let msg_wrapper: super::json::JsonWithClass =
-            match super::json::JsonWithClass::decode(json_obj) {
+        let msg_wrapper: super::classified::JsonWithClass =
+            match super::classified::JsonWithClass::decode(json_obj) {
             Some(sm) => sm,
             None => { return None; }
         };
@@ -516,7 +515,7 @@ impl Result {
             content: self.content.clone(),
         };
 
-        super::json::JsonWithClass::encode(&obj, &self.msg_class)
+        super::classified::JsonWithClass::encode(&obj, &self.msg_class)
     }
 }
 
@@ -547,8 +546,8 @@ impl Status {
 
     pub fn from_json_value(json_obj: &json::JsonValue) -> Option<Self> {
 
-        let msg_wrapper: super::json::JsonWithClass =
-            match super::json::JsonWithClass::decode(json_obj) {
+        let msg_wrapper: super::classified::JsonWithClass =
+            match super::classified::JsonWithClass::decode(json_obj) {
             Some(sm) => sm,
             None => { return None; }
         };
@@ -579,7 +578,7 @@ impl Status {
             statusCode: json::from(self.status as isize),
         };
 
-        super::json::JsonWithClass::encode(&obj, &self.msg_class)
+        super::classified::JsonWithClass::encode(&obj, &self.msg_class)
     }
 }
 
@@ -602,23 +601,10 @@ impl Method {
     }
 
     /// Create a Method from a JsonValue.
-    ///
-    ///```
-    /// use opensrf::message::Method;
-    /// let api = "opensrf.system.echo";
-    ///
-    /// let jv = json::object!{
-    ///   method: json::from(api.to_string()),
-    ///   params: vec![json::from(String::from("Hello"))]
-    /// };
-    ///
-    /// let m: Method = Method::from_json_value(&jv).unwrap();
-    /// assert_eq!(m.method(), api);
-    ///```
     pub fn from_json_value(json_obj: &json::JsonValue) -> Option<Self> {
 
-        let msg_wrapper: super::json::JsonWithClass =
-            match super::json::JsonWithClass::decode(json_obj) {
+        let msg_wrapper: super::classified::JsonWithClass =
+            match super::classified::JsonWithClass::decode(json_obj) {
             Some(mw) => mw,
             None => { return None; }
         };
@@ -653,21 +639,6 @@ impl Method {
     }
 
     /// Create a JsonValue from a Method
-    ///
-    /// ```
-    /// use opensrf::message::Method;
-    /// let api = "opensrf.system.echo";
-    ///
-    /// let m = Method::new(api, vec![json::from(String::from("Hello"))]);
-    ///
-    /// let jv = m.to_json_value();
-    ///
-    /// assert_eq!(jv["method"].as_str().unwrap(), api);
-    /// assert!(jv["params"].is_array());
-    ///
-    /// let first = &jv["params"][0];
-    /// assert_eq!(first.as_str().unwrap(), "Hello");
-    /// ```
     pub fn to_json_value(&self) -> json::JsonValue {
 
         // Clone the params so the new json object can absorb them.
@@ -679,7 +650,7 @@ impl Method {
             params: json::from(params),
         };
 
-        super::json::JsonWithClass::encode(&obj, &self.msg_class)
+        super::classified::JsonWithClass::encode(&obj, &self.msg_class)
     }
 }
 
