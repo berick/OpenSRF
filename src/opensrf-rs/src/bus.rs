@@ -165,11 +165,10 @@ impl Bus {
         match json::parse(&json_string) {
             Ok(json_val) => Ok(Some(json_val)),
 
-            // Discard bad JSON and log the error instead of
-            // bubbling it up to the caller.
+            // Log the error and bubble it up to the caller.
             Err(err_msg) => {
                 error!("Error parsing JSON: {:?}", err_msg);
-                return Ok(None);
+                return Err(super::error::Error::JsonError(err_msg));
             }
         }
     }

@@ -4,8 +4,17 @@ use opensrf::message::TransportMessage;
 use opensrf::message::Payload;
 use opensrf::message::Method;
 use opensrf::message::Message;
+use opensrf::bus::Bus;
+use opensrf::conf::BusConfig;
 
 fn main() {
+
+    let mut bs = BusConfig::new();
+    bs.set_host("127.0.0.1");
+    bs.set_port(6379);
+
+    let mut bus = Bus::new(Bus::new_bus_id("client"));
+    bus.connect(&bs).unwrap();
 
     let pl = Payload::Method(
         Method::new(
@@ -15,21 +24,15 @@ fn main() {
     );
 
     let req = Message::new(MessageType::Request, 1, pl);
-    let mut tm = TransportMessage::new("my-to", "my-from", "my-thread");
+    let mut tm = TransportMessage::new("opensrf.settings", bus.bus_id(), "1234710324987");
     tm.body_as_mut().push(req);
 
-    println!("MESSAGE: {}", tm.to_json_value().dump());
+    bus.send(&tm).unwrap();
 
-    let json_str = r#"{"to":"my-to","from":"my-from","thread":"my-thread","body":[{"__c":"osrfMessage","__p":{"threadTrace":1,"type":"REQUEST","locale":"en-US","timezone":"America/New_York","api_level":1,"ingress":"opensrf","payload":{"__c":"osrfMethod","__p":{"method":"opensrf.system.echo","params":["Hello","World"]}}}}]}"#;
+    let resp = bus.recv(10).unwrap().unwrap();
 
-    let json_value = json::parse(json_str).unwrap();
-    let tm = TransportMessage::from_json_value(&json_value).unwrap();
+    println!("RESP: {}", resp.to_json_value().dump());
 
-    if let Payload::Method(method) = tm.body()[0].payload() {
-        println!("param 1 {}", method.params()[0].as_str().unwrap());
-    }
-
-    println!("\n\nMESSAGE AGAIN: {}", tm.to_json_value().dump());
 }
 
 
