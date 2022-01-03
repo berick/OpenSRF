@@ -13,6 +13,7 @@ pub use self::message::Request;
 */
 
 pub mod error;
+pub mod json;
 pub mod conf;
 pub mod message;
 pub mod bus;
