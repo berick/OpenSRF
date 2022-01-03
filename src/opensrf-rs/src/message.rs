@@ -344,13 +344,15 @@ impl Message {
             None => { return None; }
         };
 
+
         let msg_class = msg_wrapper.class();
         let msg_hash = msg_wrapper.json();
 
-        let thread_trace = match msg_hash["thread_trace"].as_u64() {
+        let thread_trace = match msg_hash["threadTrace"].as_u64() {
             Some(i) => i,
             None => { return None; }
         };
+
 
         let mtype_str = match msg_hash["type"].as_str() {
             Some(s) => s,
