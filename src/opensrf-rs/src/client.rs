@@ -55,18 +55,24 @@ pub struct Session<'cs> {
 
     connected: bool,
 
-    /// Name of remote service
+    /// Service name.
     ///
-    /// This doubles as the remote_addr when initiating a new conversation.
+    /// For Clients, this doubles as the remote_addr when initiating
+    /// a new conversation.
+    /// For Servers, this is the name of the service we host.
     service: String,
 
     /// Worker-specific bus address for our session.
     /// Only set once we are communicating with a specific worker.
     remote_addr: Option<String>,
 
+    /// Each session is identified by a random thread string.
     thread: String,
 
     client: &'cs mut Client,
+
+    /// Each new Request within a Session gets a new thread_trace.
+    /// Replies have the same thread_trace as their request.
     thread_trace: u64,
 
     /// Though a TransportMessage may contain multiple messages within
