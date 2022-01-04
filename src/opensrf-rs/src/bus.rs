@@ -145,7 +145,7 @@ impl Bus {
             value = resp[1].to_string(); // resp = [key, value]
         }
 
-        trace!("recv_one_value() pulled from queue: {}", value);
+        trace!("recv_one_value() pulled from bus: {}", value);
 
         Ok(Some(value))
     }
