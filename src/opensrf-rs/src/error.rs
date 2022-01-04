@@ -9,6 +9,10 @@ pub enum Error {
     /// Invalid configuration file/value
     ClientConfigError,
 
+    RequestTimeoutError,
+
+    BadResponseError,
+
     /// Error occurred during network communication
     BusError(redis::RedisError),
 
@@ -38,6 +42,8 @@ impl fmt::Display for Error {
             JsonError(ref err) => err.fmt(f),
             InternalApiError(s) => write!(f, "internal api error: {}", s),
             ClientConfigError => write!(f, "configuration error"),
+            RequestTimeoutError => write!(f, "request timed out"),
+            BadResponseError => write!(f, "unexpected response received"),
         }
     }
 }

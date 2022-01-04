@@ -1,5 +1,6 @@
 use std::fs;
 use log::{trace, debug, error};
+use log4rs::append::file::FileAppender;
 use super::error::Error;
 
 #[derive(Debug, Clone)]
@@ -90,6 +91,12 @@ impl ClientConfig {
 
     /// Load configuration from an XML file
     pub fn load_file(&mut self, config_file: &str) -> Result<(), Error> {
+
+        /// TODO do the thing
+
+        self.bus_config.set_host("127.0.0.1");
+        self.bus_config.set_port(6379);
+
         Ok(())
     }
 
