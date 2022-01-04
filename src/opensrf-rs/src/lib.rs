@@ -1,17 +1,3 @@
-/*
-pub use self::error;
-pub use self::conf;
-pub use self::message;
-pub use self::message;
-pub use self::bus::Bus;
-pub use self::server::Server;
-pub use self::method::Method;
-pub use self::method::ParamCount;
-pub use self::client::Client;
-pub use self::worker::RequestContext;
-pub use self::message::Request;
-*/
-
 pub mod error;
 pub mod util;
 pub mod conf;
@@ -27,7 +13,6 @@ mod tests;
 mod method;
 mod worker;
 mod server;
-
 */
 
 /*
