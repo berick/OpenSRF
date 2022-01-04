@@ -13,10 +13,12 @@ pub use self::message::Request;
 */
 
 pub mod error;
-pub mod classified;
+pub mod util;
 pub mod conf;
+pub mod classified;
 pub mod message;
 pub mod bus;
+pub mod client;
 
 #[cfg(test)]
 mod tests;
@@ -25,7 +27,6 @@ mod tests;
 mod method;
 mod worker;
 mod server;
-mod client;
 
 */
 

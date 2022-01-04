@@ -1,13 +1,13 @@
 use std::time;
 use std::cmp;
 use std::fmt;
-use rand::Rng;
 use log::{trace, error};
 use redis;
 use redis::Commands;
 use super::conf::BusConfig;
 use super::message::TransportMessage;
 use super::error;
+use super::util;
 
 /// Manages the Redis connection.
 pub struct Bus {
@@ -26,9 +26,7 @@ impl Bus {
 
     /// Generates a unique address with a prefix string.
     pub fn new_bus_id(prefix: &str) -> String {
-        let mut rng = rand::thread_rng();
-        let num: u64 = rng.gen_range(100_000_000_000..1_000_000_000_000_000);
-        String::from(prefix) + &format!("-{:0width$}", num, width = 16)
+        String::from(prefix) + &util::random_12()
     }
 
     pub fn bus_id(&self) -> &str {

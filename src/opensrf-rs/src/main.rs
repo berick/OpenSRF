@@ -5,34 +5,34 @@ use opensrf::message::Payload;
 use opensrf::message::Method;
 use opensrf::message::Message;
 use opensrf::bus::Bus;
-use opensrf::conf::BusConfig;
+use opensrf::conf::ClientConfig;
+use opensrf::client::Client;
+use opensrf::client::ClientSession;
+use opensrf::client::Request;
 
 fn main() {
 
-    let mut bs = BusConfig::new();
-    bs.set_host("127.0.0.1");
-    bs.set_port(6379);
+    let mut conf = ClientConfig::new();
+    conf.load_file(""); // TODO
 
-    let mut bus = Bus::new(Bus::new_bus_id("client"));
-    bus.connect(&bs).unwrap();
+    let mut client = Client::new();
+    client.bus_connect(conf.bus_config()).unwrap();
 
-    let pl = Payload::Method(
-        Method::new(
-            "opensrf.system.echo",
-            vec![json::from("Hello"), json::from("World")]
-        )
-    );
+    let mut ses = client.session("opensrf.settings");
 
-    let req = Message::new(MessageType::Request, 1, pl);
-    let mut tm = TransportMessage::new("opensrf.settings", bus.bus_id(), "1234710324987");
-    tm.body_as_mut().push(req);
+    let mut req = ses.request(
+        "opensrf.system.echo",
+        vec![json::from("Hello"), json::from("World")]
+    ).unwrap();
 
-    bus.send(&tm).unwrap();
+    loop {
+        match ses.recv(&mut req, 10).unwrap() {
+            Some(value) => println!("GOT RESPONSE: {}", value.dump()),
+            None => break,
+        }
+    }
 
-    let resp = bus.recv(10).unwrap().unwrap();
-
-    println!("RESP: {}", resp.to_json_value().dump());
-
+    println!("Request is complete: {}", req.complete());
 }
 
 
