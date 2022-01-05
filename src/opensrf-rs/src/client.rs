@@ -30,6 +30,10 @@ impl Client {
         }
     }
 
+    pub fn bus(&self) -> &bus::Bus {
+        &self.bus
+    }
+
     pub fn bus_connect(&mut self,
         bus_config: &conf::BusConfig) -> Result<(), error::Error> {
         self.bus.connect(bus_config)
@@ -42,13 +46,14 @@ impl Client {
     }
 
     /// Creates a new client session for communicating with the specified service.
-    pub fn session(&mut self, service: &str) -> &mut Session {
+    pub fn session(&mut self, service: &str) -> ClientSession {
         let mut ses = Session::new(service);
-        let thread = ses.thread().to_string();
-        self.sessions.insert(thread.to_string(), ses);
 
-        /// unwrap() OK here since we just inserted the value.
-        self.get_session_mut(&thread).unwrap()
+        let thread = ses.thread().to_string();
+
+        self.sessions.insert(thread.to_string(), ses);
+        
+        ClientSession::new(self, thread)
     }
 
     pub fn get_session(&self, thread: &str) -> Option<&Session> {
@@ -59,6 +64,85 @@ impl Client {
         self.sessions.get_mut(thread)
     }
 
+
+    /// Returns the first transport message pulled from the pending
+    /// messages queue that matches the provided thread.
+    fn recv_thread_from_queue(&mut self, 
+        thread: &str, mut timeout: i32) -> Option<TransportMessage> {
+
+        if let Some(index) =
+            self.pending_transport_messages.iter().position(|tm| tm.thread() == thread) {
+
+            trace!("Found a stashed reply for thread {}", thread);
+
+            let tm = self.pending_transport_messages.remove(index);
+
+            Some(tm)
+
+        } else {
+
+            None
+        }
+    }
+
+    /// Returns the first transport message pulled from the Bus that
+    /// matches the provided thread.
+    ///
+    /// Messages that don't match the provided thread are pushed
+    /// onto the pending transport message queue.
+    pub fn recv_thread_from_bus(&mut self, thread: &str, mut timeout: i32) ->
+        Result<Option<TransportMessage>, error::Error> {
+
+        loop {
+
+            let start = time::SystemTime::now();
+
+            let recv_op = self.bus.recv(timeout)?;
+
+            if timeout > 0 {
+                timeout -= start.elapsed().unwrap().as_secs() as i32;
+            }
+
+            let mut tm = match recv_op {
+                Some(m) => m,
+                None => { return Ok(None); } // Timed out
+            };
+
+            if tm.thread() == thread {
+
+                return Ok(Some(tm));
+
+            } else {
+
+                self.pending_transport_messages.push(tm);
+            }
+        }
+    }
+
+    /// Returns the first transport message pulled from either the 
+    /// pending messages queue or the bus.
+    pub fn recv_thread(&mut self, thread: &str, mut timeout: i32) ->
+        Result<Option<TransportMessage>, error::Error> {
+
+        if let Some(tm) = self.recv_thread_from_queue(thread, timeout) {
+
+            // We found a message destined for the requested thread
+            // Update our Session so it has the latest remote_addr
+
+            let mut ses = match self.get_session_mut(thread) {
+                Some(s) => s,
+                None => { return Err(error::Error::NoSuchThreadError); }
+            };
+
+            if ses.remote_addr() != tm.from() {
+                ses.remote_addr = Some(tm.from().to_string());
+            }
+
+            Ok(Some(tm))
+        } else {
+            self.recv_thread_from_bus(thread, timeout)
+        }
+    }
 }
 
 pub enum SessionType {
@@ -86,16 +170,6 @@ pub struct Session {
 
     /// Each session is identified by a random thread string.
     thread: String,
-
-    /// Each new Request within a Session gets a new thread_trace.
-    /// Replies have the same thread_trace as their request.
-    thread_trace: u64,
-
-    /// Though a TransportMessage may contain multiple messages within
-    /// its body, our recv() call processes a single osrf message at
-    /// a time.  Store the yet-to-be-processed ones here.  They'll be
-    /// processed on subsequent calls to recv().
-    pending_messages: Vec<message::Message>,
 }
 
 impl Session {
@@ -107,8 +181,6 @@ impl Session {
             connected: false,
             remote_addr: None,
             thread: util::random_16(),
-            thread_trace: 0,
-            pending_messages: Vec::new(),
         }
     }
 
@@ -128,6 +200,208 @@ impl Session {
             &self.service
         }
     }
+}
+
+pub struct ClientSession<'cs> {
+    client: &'cs mut Client,
+    thread: String,
+
+    /// Each new Request within a Session gets a new thread_trace.
+    /// Replies have the same thread_trace as their request.
+    thread_trace: u64,
+
+    /// Though a TransportMessage may contain multiple messages within
+    /// its body, our recv() call processes a single osrf message at
+    /// a time.  Store the yet-to-be-processed ones here.  They'll be
+    /// processed on subsequent calls to recv().
+    pending_replies: Vec<message::Message>,
+}
+
+impl<'cs> ClientSession<'cs> {
+
+    fn new(client: &'cs mut Client, thread: String) -> Self {
+        ClientSession {
+            client,
+            thread,
+            thread_trace: 0,
+            pending_replies: Vec::new(),
+        }
+    }
+
+    pub fn thread(&self) -> &str {
+        &self.thread
+    }
+
+    fn client(&'cs self) -> &'cs Client {
+        &self.client
+    }
+
+    fn client_mut(&'cs mut self) -> &'cs mut Client {
+        &mut self.client
+    }
+
+    /// Create and send a message::Message with a message::Request payload
+    /// based on the provided method and params.
+    ///
+    /// The created message::Request is returned and may be used to
+    /// receive responses.
+    pub fn request(&'cs mut self, method: &str,
+        params: Vec<json::JsonValue>) -> Result<Request, error::Error> {
+
+        self.thread_trace += 1;
+
+        let thread_trace = self.thread_trace;
+
+        let ses = match self.client().get_session(self.thread()) {
+            Some(s) => s,
+            None => { return Err(error::Error::NoSuchThreadError); }
+        };
+
+        let method = Payload::Method(Method::new(method, params));
+
+        let req = Message::new(MessageType::Request, thread_trace, method);
+
+        let tm = TransportMessage::new_with_body(ses.remote_addr(), 
+            self.client().bus().bus_id(), self.thread(), req);
+
+        self.client().bus().send(&tm)?;
+
+        Ok(Request {
+            thread_trace: thread_trace,
+            complete: false,
+        })
+    }
+
+    /// Returns the next reply from the client pending_replies queue matching
+    /// this request if present.
+    ///
+    /// If a reply is found, it is removed from the queue.
+    fn recv_from_pending(&mut self, thread_trace: u64) -> Option<message::Message> {
+
+        if let Some(index) =
+            self.pending_replies.iter().position(|m| m.thread_trace() == thread_trace) {
+
+            trace!("Found a stashed reply for request {}", thread_trace);
+
+            let msg = self.pending_replies.remove(index);
+
+            Some(msg)
+
+        } else {
+            None
+        }
+    }
+
+    /// Extract a list of Message's from the next TransportMessage destined
+    /// for our thread.
+    fn recv_message_list(&'cs mut self, 
+        thread_trace: u64, timeout: i32) -> Result<Vec<Message>, error::Error> {
+
+        // to_string() avoids mixed / multiple borrows.
+        // Gotta be a better way...
+        let thread = self.thread().to_string();
+        let mut client = self.client_mut();
+
+        let tm = match client.recv_thread(&thread, timeout)? {
+            Some(m) => m,
+            None => { return Ok(Vec::new()); } // Timeout
+        };
+
+        Ok(tm.body().to_owned())
+    }
+
+    /// Recieve a response for this request.
+    ///
+    /// First tries the client response queue, followed by the message
+    /// bus.  Returns None on timeout or if this Request has already
+    /// been marked as complete.
+    pub fn recv(&'cs mut self, req: &mut Request, 
+        timeout: i32) -> Result<Option<json::JsonValue>, error::Error> {
+
+        // Request previously marked as complete
+        if req.complete { return Ok(None); }
+
+        // Reply for this request was previously pulled from the
+        // bus and tossed into our queue.
+        if let Some(msg) = self.recv_from_pending(req.thread_trace()) {
+            //return self.handle_client(&msg, req);
+        }
+
+        let mut msg_list = self.recv_message_list(req.thread_trace, timeout)?;
+
+        // We have received a message that matches this session's thread
+
+        if msg_list.len() == 0 { return Ok(None); }
+
+        let msg = msg_list.remove(0);
+
+        let mut resp: Result<Option<json::JsonValue>, error::Error> = Ok(None);
+
+        if msg.thread_trace() == req.thread_trace() {
+
+            // We have received a reply to the provided request.
+
+            //resp = self.handle_reply(&msg, req);
+
+        } else {
+            /// Pulled a reply to a request made by this client session
+            /// but not matching the requested thread trace.
+
+            trace!("recv() found a reply for a request {}, stashing",
+                msg.thread_trace());
+
+            self.pending_replies.push(msg);
+        }
+
+        while msg_list.len() > 0 {
+
+            // Our transport message has more messages in its body.
+            // Toss them into the session queue so they'll be picked
+            // up with the next call to recv();
+            self.pending_replies.push(msg_list.remove(0));
+        }
+
+        return resp;
+    }
+
+    /*
+    fn handle_reply(&mut self, msg: &message::Message, req: &mut Request)
+        -> Result<Option<json::JsonValue>, error::Error> {
+
+        if let Payload::Result(resp) = msg.payload() {
+            // TODO check status code ?
+            return Ok(Some(resp.content().clone()));
+        };
+
+        if let Payload::Status(stat) = msg.payload() {
+
+            match stat.status() {
+                MessageStatus::Ok => self.connected = true,
+                MessageStatus::Continue => {}, // TODO
+                MessageStatus::Complete => req.complete = true,
+                MessageStatus::Timeout => {
+                    self.reset();
+                    warn!("Stateful session ended by server on keepalive timeout");
+                    return Err(error::Error::RequestTimeoutError);
+                },
+                _ => {
+                    self.reset();
+                    warn!("Unexpected response status {}", stat.status());
+                    return Err(error::Error::RequestTimeoutError);
+                }
+            }
+
+            return Ok(None);
+        }
+
+        error!("Request::recv() unexpected response {}", msg.to_json_value().dump());
+
+        self.reset();
+
+        return Err(error::Error::BadResponseError);
+    }
+    */
+}
 
     /*
     pub fn disconnect(&mut self) -> Result<(), error::Error> {
@@ -248,103 +522,6 @@ impl Session {
     }
 
 
-    /// Recieve a response for this request.
-    ///
-    /// First tries the client response queue, followed by the message
-    /// bus.  Returns None on timeout or if this Request has already
-    /// been marked as complete.
-    pub fn recv(&mut self, req: &mut Request, timeout: i32)
-        -> Result<Option<json::JsonValue>, error::Error> {
-
-        // Request previously marked as complete
-        if req.complete { return Ok(None); }
-
-        // Reply for this request was previously pulled from the
-        // bus and tossed into our queue.
-        if let Some(msg) = self.recv_from_queue(req.thread_trace()) {
-            match self.session_type {
-                SessionType::Client => { return self.handle_client(&msg, req); },
-                SessionType::Server => { return self.handle_server(&msg, req); },
-            }
-        }
-
-        let mut tm = match self.pull_from_bus(timeout)? {
-            Some(m) => m,
-            None => { return Ok(None); } // Timeout
-        };
-
-        if self.remote_addr() != tm.from() {
-            self.remote_addr = Some(tm.from().to_string());
-        }
-
-        if tm.body().len() == 0 { return Ok(None); }
-
-        let msg = tm.body_as_mut().remove(0);
-
-        let mut resp: Result<Option<json::JsonValue>, error::Error> = Ok(None);
-
-        if msg.thread_trace() == req.thread_trace() {
-
-            match self.session_type {
-                SessionType::Client => resp = self.handle_client(&msg, req),
-                SessionType::Server => resp = self.handle_server(&msg, req),
-            }
-
-        } else {
-            /// Pulled a reply to a request made by this client session
-            /// but not matching the requested thread trace.
-
-            trace!("recv() found a reply for a request {}, stashing",
-                msg.thread_trace());
-
-            self.pending_messages.push(msg);
-        }
-
-        while tm.body().len() > 0 {
-            // Our transport message has more messages in its body.
-            // Toss them into the session queue so they'll be picked
-            // up with the next call to recv();
-            self.pending_messages.push(tm.body_as_mut().remove(0));
-        }
-
-        return resp;
-    }
-
-    fn handle_client(&mut self, msg: &message::Message, req: &mut Request)
-        -> Result<Option<json::JsonValue>, error::Error> {
-
-        if let Payload::Result(resp) = msg.payload() {
-            // TODO check status code ?
-            return Ok(Some(resp.content().clone()));
-        };
-
-        if let Payload::Status(stat) = msg.payload() {
-
-            match stat.status() {
-                MessageStatus::Ok => self.connected = true,
-                MessageStatus::Continue => {}, // TODO
-                MessageStatus::Complete => req.complete = true,
-                MessageStatus::Timeout => {
-                    self.reset();
-                    warn!("Stateful session ended by server on keepalive timeout");
-                    return Err(error::Error::RequestTimeoutError);
-                },
-                _ => {
-                    self.reset();
-                    warn!("Unexpected response status {}", stat.status());
-                    return Err(error::Error::RequestTimeoutError);
-                }
-            }
-
-            return Ok(None);
-        }
-
-        error!("Request::recv() unexpected response {}", msg.to_json_value().dump());
-
-        self.reset();
-
-        return Err(error::Error::BadResponseError);
-    }
 
     fn handle_server(&mut self, msg: &message::Message, req: &mut Request)
         -> Result<Option<json::JsonValue>, error::Error> {
@@ -354,8 +531,6 @@ impl Session {
     }
 
     */
-
-}
 
 
 pub struct Request {
@@ -372,3 +547,4 @@ impl Request {
         self.complete
     }
 }
+

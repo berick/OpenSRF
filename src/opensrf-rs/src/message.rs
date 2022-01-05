@@ -145,6 +145,7 @@ impl fmt::Display for MessageStatus {
     }
 }
 
+#[derive(Clone)]
 pub enum Payload {
     Method(Method),
     Result(Result),
@@ -172,6 +173,7 @@ pub struct TransportMessage {
 }
 
 impl TransportMessage {
+
     pub fn new(to: &str, from: &str, thread: &str) -> Self {
         TransportMessage {
             to: to.to_string(),
@@ -180,6 +182,12 @@ impl TransportMessage {
             osrf_xid: String::from(""),
             body: Vec::new()
         }
+    }
+
+    pub fn new_with_body(to: &str, from: &str, thread: &str, msg: Message) -> Self {
+        let mut tm = TransportMessage::new(to, from, thread);
+        tm.body.push(msg);
+        tm
     }
 
     pub fn to(&self) -> &str {
@@ -263,6 +271,7 @@ impl TransportMessage {
     }
 }
 
+#[derive(Clone)]
 pub struct Message {
     mtype: MessageType,
     thread_trace: u64,
@@ -584,6 +593,7 @@ impl Status {
 
 
 /// A single API request with method name and parameters.
+#[derive(Clone)]
 pub struct Method {
     method: String,
     params: Vec<json::JsonValue>,
