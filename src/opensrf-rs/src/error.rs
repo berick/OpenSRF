@@ -13,6 +13,8 @@ pub enum Error {
 
     BadResponseError,
 
+    NoSuchThreadError,
+
     /// Error occurred during network communication
     BusError(redis::RedisError),
 
@@ -44,6 +46,7 @@ impl fmt::Display for Error {
             ClientConfigError => write!(f, "configuration error"),
             RequestTimeoutError => write!(f, "request timed out"),
             BadResponseError => write!(f, "unexpected response received"),
+            NoSuchThreadError => write!(f, "attempt to reference unknown session thread"),
         }
     }
 }
