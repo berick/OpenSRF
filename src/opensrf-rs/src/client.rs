@@ -1,4 +1,5 @@
 use log::{trace, warn, error};
+use std::collections::HashMap;
 use std::time;
 use super::*;
 use super::message::TransportMessage;
@@ -11,6 +12,8 @@ use super::message::Payload;
 pub struct Client {
     bus: bus::Bus,
 
+    sessions: HashMap<String, Session>,
+
     /// Queue of receieved transport messages.
     /// Messages may arrive for one Session that are destined for
     /// another Session (i.e. different "thread" values).
@@ -22,6 +25,7 @@ impl Client {
     pub fn new() -> Self {
         Client {
             bus: bus::Bus::new(bus::Bus::new_bus_id("client")),
+            sessions: HashMap::new(),
             pending_transport_messages: Vec::new(),
         }
     }
@@ -38,9 +42,23 @@ impl Client {
     }
 
     /// Creates a new client session for communicating with the specified service.
-    pub fn session(&mut self, service: &str) -> Session {
-        Session::new(self, service)
+    pub fn session(&mut self, service: &str) -> &mut Session {
+        let mut ses = Session::new(service);
+        let thread = ses.thread().to_string();
+        self.sessions.insert(thread.to_string(), ses);
+
+        /// unwrap() OK here since we just inserted the value.
+        self.get_session_mut(&thread).unwrap()
     }
+
+    pub fn get_session(&self, thread: &str) -> Option<&Session> {
+        self.sessions.get(thread)
+    }
+
+    pub fn get_session_mut(&mut self, thread: &str) -> Option<&mut Session> {
+        self.sessions.get_mut(thread)
+    }
+
 }
 
 pub enum SessionType {
@@ -49,7 +67,7 @@ pub enum SessionType {
 }
 
 /// Models a conversation with a single service.
-pub struct Session<'cs> {
+pub struct Session {
 
     session_type: SessionType,
 
@@ -69,8 +87,6 @@ pub struct Session<'cs> {
     /// Each session is identified by a random thread string.
     thread: String,
 
-    client: &'cs mut Client,
-
     /// Each new Request within a Session gets a new thread_trace.
     /// Replies have the same thread_trace as their request.
     thread_trace: u64,
@@ -82,12 +98,11 @@ pub struct Session<'cs> {
     pending_messages: Vec<message::Message>,
 }
 
-impl<'cs> Session<'cs> {
+impl Session {
 
-    fn new(client: &'cs mut Client, service: &str) -> Self {
+    fn new(service: &str) -> Self {
         Session {
             session_type: SessionType::Client,
-            client: client,
             service: String::from(service),
             connected: false,
             remote_addr: None,
@@ -150,6 +165,7 @@ impl<'cs> Session<'cs> {
     }
     */
 
+/*
     /// Create and send a message::Message with a message::Request payload
     /// based on the provided method and params.
     ///
@@ -337,10 +353,12 @@ impl<'cs> Session<'cs> {
         Ok(None)
     }
 
+    */
+
 }
 
 
-pub struct Request<> {
+pub struct Request {
     thread_trace: u64,
     complete: bool,
 }
