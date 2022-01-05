@@ -19,6 +19,8 @@ fn main() {
 
     let mut ses = client.session("opensrf.settings");
 
+    /*
+
     let mut req = ses.request(
         "opensrf.system.echo",
         vec![json::from("Hello"), json::from("World")]
@@ -32,6 +34,7 @@ fn main() {
     }
 
     println!("Request is complete: {}", req.complete());
+    */
 }
 
 
