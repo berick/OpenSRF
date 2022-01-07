@@ -1,13 +1,12 @@
 use opensrf::bus::Bus;
 use opensrf::conf::ClientConfig;
-use opensrf::message::MessageStatus;
 use opensrf::message::MessageType;
+use opensrf::message::MessageStatus;
 use opensrf::message::TransportMessage;
 use opensrf::message::Payload;
 use opensrf::message::Method;
 use opensrf::message::Message;
 use opensrf::client::Client;
-use opensrf::client::Request;
 
 fn main() {
 
@@ -18,6 +17,20 @@ fn main() {
     client.bus_connect(conf.bus_config()).unwrap();
 
     let mut ses = client.session("opensrf.settings");
+
+    ses.request(
+        "opensrf.system.echo",
+        vec![json::from("Hello"), json::from("World")]
+    ).unwrap();
+
+    //while !ses.request_complete() {
+        match ses.recv(10).unwrap() {
+            Some(value) => println!("GOT RESPONSE: {}", value.dump()),
+            //None => break,
+            //None => break,
+            None => {},
+        }
+    //}
 
     /*
 
