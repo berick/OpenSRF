@@ -15,6 +15,10 @@ pub enum Error {
 
     NoSuchThreadError,
 
+    /// Only one request may be active within a given session/thread
+    /// at a time.
+    ActiveRequestError,
+
     /// Error occurred during network communication
     BusError(redis::RedisError),
 
@@ -47,6 +51,7 @@ impl fmt::Display for Error {
             RequestTimeoutError => write!(f, "request timed out"),
             BadResponseError => write!(f, "unexpected response received"),
             NoSuchThreadError => write!(f, "attempt to reference unknown session thread"),
+            ActiveRequestError => write!(f, "a request is already active for this client session"),
         }
     }
 }
