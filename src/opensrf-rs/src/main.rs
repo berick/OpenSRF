@@ -23,31 +23,25 @@ fn main() {
         vec![json::from("Hello"), json::from("World")]
     ).unwrap();
 
-    //while !ses.request_complete() {
+    while !ses.request_complete() {
         match ses.recv(10).unwrap() {
-            Some(value) => println!("GOT RESPONSE: {}", value.dump()),
-            //None => break,
-            //None => break,
-            None => {},
-        }
-    //}
-
-    /*
-
-    let mut req = ses.request(
-        "opensrf.system.echo",
-        vec![json::from("Hello"), json::from("World")]
-    ).unwrap();
-
-    loop {
-        match ses.recv(&mut req, 10).unwrap() {
             Some(value) => println!("GOT RESPONSE: {}", value.dump()),
             None => break,
         }
     }
 
-    println!("Request is complete: {}", req.complete());
-    */
+    ses.request(
+        "opensrf.system.echo",
+        vec![json::from("Hello"), json::from("World")]
+    ).unwrap();
+
+    while !ses.request_complete() {
+        match ses.recv(10).unwrap() {
+            Some(value) => println!("GOT RESPONSE: {}", value.dump()),
+            None => break,
+        }
+    }
+
 }
 
 
