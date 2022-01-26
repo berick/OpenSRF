@@ -12,7 +12,7 @@ use super::util;
 /// Manages the Redis connection.
 pub struct Bus {
     redis: Option<redis::Client>,
-    bus_id: String,
+    pub bus_id: String,
 }
 
 impl Bus {
