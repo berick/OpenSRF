@@ -9,6 +9,8 @@ use super::message::MessageStatus;
 use super::message::Method;
 use super::message::Payload;
 
+const CONNECT_TIMEOUT: i32 = 10;
+
 pub struct Client {
     bus: bus::Bus,
 
@@ -50,6 +52,20 @@ impl Client {
         self.sessions.insert(thread.to_string(), ses);
 
         ClientSession::new(self, thread)
+    }
+
+    pub fn get_session(&self, thread: &str) -> Result<&Session, error::Error> {
+        match self.sessions.get(thread) {
+            Some(ses) => Ok(ses),
+            None => Err(error::Error::NoSuchThreadError)
+        }
+    }
+
+    pub fn get_session_mut(&mut self, thread: &str) -> Result<&mut Session, error::Error> {
+        match self.sessions.get_mut(thread) {
+            Some(ses) => Ok(ses),
+            None => Err(error::Error::NoSuchThreadError)
+        }
     }
 
     /// Returns the first transport message pulled from the pending
@@ -113,6 +129,8 @@ impl Client {
     pub fn recv_thread(&mut self, thread: &str, mut timeout: i32) ->
         Result<Option<TransportMessage>, error::Error> {
 
+        trace!("recv_thread() with timeout={}", timeout);
+
         let tm = match self.recv_thread_from_queue(thread, timeout) {
             Some(t) => t,
             None => {
@@ -122,12 +140,9 @@ impl Client {
                 }
             }
         };
-                
-        let mut ses = match self.sessions.get_mut(thread) {
-            Some(s) => s,
-            None => { return Err(error::Error::NoSuchThreadError); }
-        };
 
+        let ses = self.get_session_mut(thread)?;
+                
         if ses.remote_addr() != tm.from() {
             ses.remote_addr = Some(tm.from().to_string());
         }
@@ -204,6 +219,8 @@ pub struct ClientSession<'cs> {
     /// True if the most recent request has completed
     request_complete: bool,
 
+    connecting: bool, // TODO req
+
     /// Though a TransportMessage may contain multiple messages within
     /// its body, our recv() call processes a single osrf message at
     /// a time.  Store the yet-to-be-processed ones here.  They'll be
@@ -218,6 +235,7 @@ impl<'cs> ClientSession<'cs> {
             client,
             thread,
             thread_trace: 0,
+            connecting: false,
             request_complete: true,
             pending_replies: Vec::new(),
         }
@@ -294,8 +312,10 @@ impl<'cs> ClientSession<'cs> {
     /// been marked as complete.
     pub fn recv(&mut self, timeout: i32) -> Result<Option<json::JsonValue>, error::Error> {
 
+        trace!("recv() timeout={} complete={}", timeout, self.request_complete);
+
         // Request previously marked as complete
-        if self.request_complete { return Ok(None); }
+        if self.request_complete && !self.connecting { return Ok(None); }
 
         // Reply for this request was previously pulled from the
         // bus and tossed into our queue.
@@ -354,17 +374,11 @@ impl<'cs> ClientSession<'cs> {
     fn handle_reply(&mut self, msg: &message::Message)
         -> Result<Option<json::JsonValue>, error::Error> {
 
-        // TODO clone the string to avoid multiple borrows on following line
-        // Hoping there's a better way.
-        let thread = self.thread().to_string();
+        let thread = self.thread().to_string(); // borrow as mutable
 
-        let mut ses = match self.client.sessions.get_mut(&thread) {
-            Some(s) => s,
-            None => { return Err(error::Error::NoSuchThreadError); }
-        };
+        let ses = self.client.get_session_mut(&thread)?;
 
         if let Payload::Result(resp) = msg.payload() {
-            // TODO check status code ?
             return Ok(Some(resp.content().clone()));
         };
 
@@ -399,27 +413,61 @@ impl<'cs> ClientSession<'cs> {
         return Err(error::Error::BadResponseError);
     }
 
-    /*
-    pub fn disconnect(&mut self) -> Result<(), error::Error> {
+    pub fn connect(&mut self) -> Result<(), error::Error> {
 
-        if self.connect {
-            let msg = message::Message::new(
-                &self.remote_addr,
-                &self.client.addr,
-                0, // thread_trace
-                message::MessageType::Disconnect,
-                message::Payload::NoPayload,
-            );
+        let msg = Message::new(MessageType::Connect, 
+            self.thread_trace, message::Payload::NoPayload);
 
-            self.client.bus.send(&msg)?;
+        let tm = TransportMessage::new_with_body(
+            self.client.get_session(self.thread())?.remote_addr(),
+            self.client.bus.bus_id(), self.thread(), msg);
+
+        self.connecting = true;
+
+        self.client.bus.send(&tm)?;
+
+        let mut timeout = CONNECT_TIMEOUT;
+
+        while timeout > 0 {
+
+            let start = time::SystemTime::now();
+
+            trace!("connect() calling receive with timeout={}", timeout);
+            let recv_op = self.recv(timeout)?;
+
+            if self.client.get_session(self.thread())?.connected { 
+                self.connecting = false;
+                return Ok(()); 
+            }
+
+            timeout -= start.elapsed().unwrap().as_secs() as i32;
         }
 
+        self.connecting = false;
+
+        Err(error::Error::ConnectTimeoutError)
+    }
+
+    pub fn disconnect(&mut self) -> Result<(), error::Error> {
+
+        let thread = self.thread().to_string();
+
+        let msg = Message::new(MessageType::Disconnect, 
+            self.thread_trace, message::Payload::NoPayload);
+
+        let tm = TransportMessage::new_with_body(
+            self.client.get_session(&thread)?.remote_addr(),
+            self.client.bus.bus_id(), &thread, msg);
+
+        self.client.bus.send(&tm)?;
+
         // Avoid changing remote_addr until above message is composed.
-        self.reset();
+        self.client.get_session_mut(&thread)?.reset();
 
         Ok(())
     }
 
+    /*
     pub fn respond(&mut self,
         req: &message::Request, value: &json::JsonValue) -> Result<(), error::Error> {
 
