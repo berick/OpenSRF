@@ -17,7 +17,6 @@ fn main() {
     client.bus_connect(conf.bus_config()).unwrap();
 
     let thread = client.session("opensrf.settings");
-
     client.request(
         &thread,
         "opensrf.system.echo",
@@ -30,24 +29,6 @@ fn main() {
             None => break,
         }
     }
-
-    println!("Request is complete? {}", client.request_is_complete(&thread).unwrap());
-
-    client.request(
-        &thread,
-        "opensrf.system.echo",
-        vec![json::from("Hello 2"), json::from("World 2")]
-    ).unwrap();
-
-    println!("Request 2 is complete? {}", client.request_is_complete(&thread).unwrap());
-
-    while !client.request_is_complete(&thread).unwrap() {
-        match client.recv(&thread, 10).unwrap() {
-            Some(value) => println!("GOT RESPONSE: {}", value.dump()),
-            None => break,
-        }
-    }
-
 
     /*
     client.connect(ses).unwrap();
