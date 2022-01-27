@@ -11,8 +11,6 @@ pub enum Error {
 
     RequestTimeoutError,
 
-    ConnectTimeoutError,
-
     BadResponseError,
 
     NoSuchThreadError,
@@ -51,7 +49,6 @@ impl fmt::Display for Error {
             InternalApiError(s) => write!(f, "internal api error: {}", s),
             ClientConfigError => write!(f, "configuration error"),
             RequestTimeoutError => write!(f, "request timed out"),
-            ConnectTimeoutError => write!(f, "connect timed out"),
             BadResponseError => write!(f, "unexpected response received"),
             NoSuchThreadError => write!(f, "attempt to reference unknown session thread"),
             ActiveRequestError => write!(f, "a request is already active for this client session"),

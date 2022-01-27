@@ -16,27 +16,7 @@ fn main() {
     let mut client = Client::new();
     client.bus_connect(conf.bus_config()).unwrap();
 
-    let thread = client.session("opensrf.settings");
-    client.request(
-        &thread,
-        "opensrf.system.echo",
-        vec![json::from("Hello"), json::from("World")]
-    ).unwrap();
-
-    while !client.request_is_complete(&thread).unwrap() {
-        match client.recv(&thread, 10).unwrap() {
-            Some(value) => println!("GOT RESPONSE: {}", value.dump()),
-            None => break,
-        }
-    }
-
-    /*
-    client.connect(ses).unwrap();
-    client.recv(ses)
-    */
-
-    /*
-    ses.connect().unwrap();
+    let mut ses = client.session("opensrf.settings");
 
     ses.request(
         "opensrf.system.echo",
@@ -62,8 +42,6 @@ fn main() {
         }
     }
 
-    ses.disconnect().unwrap();
-    */
 }
 
 
