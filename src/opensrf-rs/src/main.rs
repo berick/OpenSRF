@@ -18,17 +18,7 @@ fn main() {
 
     let mut ses = client.session("opensrf.settings");
 
-    ses.request(
-        "opensrf.system.echo",
-        vec![json::from("Hello"), json::from("World")]
-    ).unwrap();
-
-    while !ses.request_complete() {
-        match ses.recv(10).unwrap() {
-            Some(value) => println!("GOT RESPONSE: {}", value.dump()),
-            None => break,
-        }
-    }
+    ses.connect().unwrap();
 
     ses.request(
         "opensrf.system.echo",
@@ -42,6 +32,20 @@ fn main() {
         }
     }
 
+    ses.request(
+        "opensrf.system.echo",
+        vec![json::from("Hello"), json::from("World")]
+    ).unwrap();
+
+    while !ses.request_complete() {
+        match ses.recv(10).unwrap() {
+            Some(value) => println!("GOT RESPONSE: {}", value.dump()),
+            None => break,
+        }
+    }
+
+
+    ses.disconnect().unwrap();
 }
 
 
