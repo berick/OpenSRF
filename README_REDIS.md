@@ -11,9 +11,13 @@ sudo apt install redis-server libredis-perl libhiredis-dev
 ## Benefits
 
 * Speed
+* Simplicity
+  * installation
+  * no account management
+  * conception movement of data.
 * No more Ejabberd (yes please!)
   * Resolves https://bugs.launchpad.net/opensrf/+bug/1703411 
-  * Maybe others?
+  * Probably resolves other stuff
 * No more OpenSRF Routers
   * All messages traverse the same data bus (Redis instance)
   * Messages have fewer hops from client to service
@@ -36,8 +40,11 @@ sudo apt install redis-server libredis-perl libhiredis-dev
     would just manages child procs.  In addition to more speed, would
     resolve situations where Listeners choke cramming large messages
     down their pipe-to-child.
-* OpenSRF request "backlog" no longer needed.  Unprocessed requests
-  will stay in the Redis message queue instead of filling up the
+* Listeners could still listen for command messages
+  * Shutdown, reload, dynamically raise max children, etc.
+  * Requests for data, e.g. drone stats (similar to router info messages)
+* OpenSRF request "backlog" no longer required.  Unprocessed requests
+  can stay in the Redis message queue instead of filling up the
   listener's network buffer.
 
 ## Limitations
@@ -49,11 +56,12 @@ sudo apt install redis-server libredis-perl libhiredis-dev
   instead of resulting in a not-found response.
 * Cannot query the router for active services.
   * Circ, for example, queries the router to see if Booking is running.
-    Could be addressed with an opensrf.xml setting for Circ.
+    Could be addressed with an opensrf.xml setting for Circ, global flag, 
+    etc.
 
 ## Private Service Security
 
-### PoC Approach (Pending)
+### One Possible Approach
 
 * Services are assumed to be "private" unless explicitly set to "public"
   in opensrf.xml
