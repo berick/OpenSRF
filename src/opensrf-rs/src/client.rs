@@ -388,7 +388,6 @@ impl Session {
     fn reset(&mut self) {
         self.connected = false;
         self.remote_addr = Some(self.service.to_string());
-        self.thread = util::random_16();
         self.pending_replies.clear();
     }
 
