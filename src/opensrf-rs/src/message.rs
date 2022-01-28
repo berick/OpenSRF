@@ -274,7 +274,7 @@ impl TransportMessage {
 #[derive(Clone)]
 pub struct Message {
     mtype: MessageType,
-    thread_trace: u64,
+    thread_trace: usize,
     locale: String,
     timezone: String,
     api_level: u8,
@@ -285,7 +285,7 @@ pub struct Message {
 
 impl Message {
 
-    pub fn new(mtype: MessageType, thread_trace: u64, payload: Payload) -> Self {
+    pub fn new(mtype: MessageType, thread_trace: usize, payload: Payload) -> Self {
         Message {
             mtype,
             thread_trace,
@@ -302,7 +302,7 @@ impl Message {
         &self.mtype
     }
 
-    pub fn thread_trace(&self) -> u64 {
+    pub fn thread_trace(&self) -> usize {
         self.thread_trace
     }
 
@@ -356,7 +356,7 @@ impl Message {
         let msg_class = msg_wrapper.class();
         let msg_hash = msg_wrapper.json();
 
-        let thread_trace = match msg_hash["threadTrace"].as_u64() {
+        let thread_trace = match msg_hash["threadTrace"].as_usize() {
             Some(i) => i,
             None => { return None; }
         };
