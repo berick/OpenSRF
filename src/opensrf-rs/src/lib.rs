@@ -3,7 +3,8 @@ pub mod util;
 pub mod conf;
 pub mod classified;
 pub mod message;
-pub mod bus;
+mod bus;
+mod session;
 pub mod client;
 
 #[cfg(test)]

@@ -1,4 +1,3 @@
-use opensrf::bus::Bus;
 use opensrf::conf::ClientConfig;
 use opensrf::message::MessageType;
 use opensrf::message::MessageStatus;
@@ -7,6 +6,10 @@ use opensrf::message::Payload;
 use opensrf::message::Method;
 use opensrf::message::Message;
 use opensrf::client::Client;
+
+use redis;
+use redis::Commands;
+use std::{thread, time};
 
 fn main() {
 
@@ -17,6 +20,20 @@ fn main() {
     client.bus_connect(conf.bus_config()).unwrap();
 
     let mut ses = client.session("opensrf.settings");
+
+    let mut req = ses.request(
+        "opensrf.system.echo",
+        vec![json::from("Hello"), json::from("World")]
+    ).unwrap();
+
+    while !req.complete() {
+        match req.recv(10).unwrap() {
+            Some(value) => println!("GOT RESPONSE: {}", value.dump()),
+            None => break,
+        }
+    }
+
+    /*
 
     ses.connect().unwrap();
 
@@ -44,8 +61,8 @@ fn main() {
         }
     }
 
-
     ses.disconnect().unwrap();
+    */
 }
 
 
