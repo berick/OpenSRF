@@ -21,10 +21,11 @@ fn main() {
 
     let mut ses = client.session("opensrf.settings");
 
-    let mut req = ses.request(
-        "opensrf.system.echo",
-        vec![json::from("Hello"), json::from("World")]
-    ).unwrap();
+    ses.connect().unwrap();
+
+    let params = vec![json::from("Hello"), json::from("World")];
+
+    let mut req = ses.request("opensrf.system.echo", params).unwrap();
 
     while !req.complete() {
         match req.recv(10).unwrap() {
@@ -32,6 +33,9 @@ fn main() {
             None => break,
         }
     }
+
+    ses.disconnect().unwrap();
+    ses.cleanup();
 
     /*
 

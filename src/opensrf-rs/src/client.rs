@@ -184,6 +184,90 @@ pub struct ClientSession<'s> {
 
 impl<'s> ClientSession<'s> {
 
+    pub fn cleanup(&mut self) {
+        self.client.sessions.remove(&self.session_id);
+    }
+
+    pub fn connect(&mut self) -> Result<(), error::Error> {
+
+        let mut thread: String;
+        let mut remote_addr: String;
+        let mut thread_trace = 0;
+
+        match self.client.sessions.get_mut(&self.session_id) {
+            Some(ses) => {
+                ses.last_thread_trace += 1;
+                thread_trace = ses.last_thread_trace;
+                thread = ses.thread.to_string();
+                remote_addr = ses.remote_addr().to_string();
+            },
+            None => {
+                return Err(error::Error::NoSuchThreadError);
+            }
+        }
+
+        let msg = Message::new(MessageType::Connect,
+            thread_trace, message::Payload::NoPayload);
+
+        let tm = TransportMessage::new_with_body(
+            &remote_addr, self.client.bus.bus_id(), &thread, msg);
+
+        self.client.bus.send(&tm)?;
+
+        let mut timeout = CONNECT_TIMEOUT;
+
+        while timeout > 0 {
+
+            let start = time::SystemTime::now();
+
+            trace!("connect() calling receive with timeout={}", timeout);
+            let recv_op = self.recv(thread_trace, timeout)?;
+
+            if let Some(ses) = self.client.sessions.get_mut(&self.session_id) {
+                if ses.connected {
+                    return Ok(())
+                }
+            }
+
+            timeout -= start.elapsed().unwrap().as_secs() as i32;
+        }
+
+        Err(error::Error::ConnectTimeoutError)
+    }
+
+    pub fn disconnect(&mut self) -> Result<(), error::Error> {
+
+        let mut thread: String;
+        let mut remote_addr: String;
+        let mut thread_trace = 0;
+
+        match self.client.sessions.get(&self.session_id) {
+            Some(ses) => {
+                thread_trace = ses.last_thread_trace;
+                thread = ses.thread.to_string();
+                remote_addr = ses.remote_addr().to_string();
+            },
+            None => {
+                return Err(error::Error::NoSuchThreadError);
+            }
+        }
+
+        let msg = Message::new(MessageType::Disconnect,
+            thread_trace, message::Payload::NoPayload);
+
+        let tm = TransportMessage::new_with_body(
+            &remote_addr, self.client.bus.bus_id(), &thread, msg);
+
+        self.client.bus.send(&tm)?;
+
+        // Avoid changing remote_addr until above message is composed.
+        if let Some(ses) = self.client.sessions.get_mut(&self.session_id) {
+            ses.reset();
+        }
+
+        Ok(())
+    }
+
     pub fn request(
         &'s mut self,
         method: &str,
