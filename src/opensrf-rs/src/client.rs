@@ -79,14 +79,15 @@ impl Client {
     }
 
     fn get_session_by_request_mut(&mut self, request_id: usize) -> Option<&mut Session> {
-        for ses in self.sessions.values() {
-            if ses.requests.get_mut(&request_id).is_some() {
-                return Some(ses)
+
+        let mut session_id = 0;
+        for mut ses in self.sessions.values() {
+            if ses.requests.get(&request_id).is_some() {
+                session_id = ses.session_id;
             }
         }
-        None
+        return self.sessions.get_mut(&session_id);
     }
-
 
     pub fn session(&mut self, service: &str) -> usize {
         self.last_session_id += 1;
@@ -229,7 +230,7 @@ impl Client {
             trace!("connect() calling receive with timeout={}", timeout);
             let recv_op = self.recv(thread_trace, timeout)?;
 
-            if let Some(ses) = self.sessions.get_mut(&self.session_id) {
+            if let Some(ses) = self.sessions.get_mut(&session_id) {
                 if ses.connected {
                     return Ok(())
                 }
@@ -267,7 +268,7 @@ impl Client {
         self.bus.send(&tm)?;
 
         // Avoid changing remote_addr until above message is composed.
-        if let Some(ses) = self.sessions.get_mut(&self.session_id) {
+        if let Some(ses) = self.sessions.get_mut(&session_id) {
             ses.reset();
         }
 
@@ -275,10 +276,10 @@ impl Client {
     }
 
     pub fn request(
-        &'s mut self,
+        &mut self,
         session_id: usize,
         method: &str,
-        params: Vec<json::JsonValue>) -> Result<Request, error::Error> {
+        params: Vec<json::JsonValue>) -> Result<usize, error::Error> {
 
         let mut thread_trace = 0;
         let mut thread: String;
@@ -327,7 +328,7 @@ impl Client {
 
     fn recv_from_backlog(&mut self, request_id: usize) -> Option<message::Message> {
 
-        let ses = match self.get_session_from_request_mut(request_id) {
+        let ses = match self.get_session_by_request_mut(request_id) {
             Some(s) => s,
             None => { return None; }
         };
@@ -356,17 +357,28 @@ impl Client {
             //return self.handle_reply(&msg);
         }
 
-        let tm = match self.sessions.get(&session_id) {
-            Some(ses) => match self.recv_session(session_id, timeout)? {
-                Some(m) => m,
-                None => { return resp; }
+        let mut thread_trace;
+        let mut session_id;
+
+        match self.get_session_by_request(request_id) {
+            Some(ses) => {
+                session_id = ses.session_id;
+                match ses.requests.get(&request_id) {
+                    Some(req) => {
+                        thread_trace = req.thread_trace
+                    },
+                    None => { return Ok(None); }
+                }
             },
+            None => { return Ok(None); }
+        }
+
+        let tm = match self.recv_session(session_id, timeout)? {
+            Some(m) => m,
             None => { return resp; }
         };
 
         let mut msg_list = tm.body().to_owned();
-
-        // We have received a message that matches this session's thread
 
         if msg_list.len() == 0 { return Ok(None); }
 
@@ -420,7 +432,7 @@ impl Client {
                 MessageStatus::Ok => ses.connected = true,
                 MessageStatus::Continue => {}, // TODO
                 MessageStatus::Complete => {
-                    if let Some(req) = self.requests.get_mut(&thread_trace) {
+                    if let Some(req) = ses.requests.get_mut(&thread_trace) {
                         req.complete = true;
                     }
                     ses.reset();
@@ -445,6 +457,18 @@ impl Client {
         ses.reset();
 
         return Err(error::Error::BadResponseError);
+    }
+
+    pub fn complete(&self, req_id: usize) -> bool {
+        match self.get_session_by_request(req_id) {
+            Some(ses) => {
+                match ses.requests.get(&req_id) {
+                    Some(req) => req.complete,
+                    None => false,
+                }
+            },
+            None => false
+        }
     }
 }
 
