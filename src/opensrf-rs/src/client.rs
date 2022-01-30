@@ -13,32 +13,6 @@ use super::session::SessionType;
 
 const CONNECT_TIMEOUT: i32 = 10;
 
-
-
-struct ClientSingleton {
-    client: Option<Client>,
-}
-
-impl ClientSingleton {
-
-    /// Gives ownership of our global Client to the caller.
-    ///
-    /// Panics if called when our Client is already externally owned
-    fn take_client(&mut self) -> Client {
-        self.client.take().unwrap()
-    }
-
-    /// Give us our client back.
-    fn give_client(&mut self, client: Client) {
-        self.client = Some(client);
-    }
-}
-
-static mut CLIENT_SINGLETON: ClientSingleton = ClientSingleton {
-    client: None,
-};
-
-
 pub struct Client {
     bus: bus::Bus,
 
@@ -51,32 +25,7 @@ pub struct Client {
     last_session_id: usize,
 }
 
-// Note accesing our singleton requires unsafe code blocks, however
-// the singleton code above is designed so there can only ever be one
-// client.  The end result is it's not really unsafe.
- // https://docs.rust-embedded.org/book/peripherals/singletons.html
-
 impl Client {
-
-    pub fn init_singleton() {
-        unsafe {
-            if CLIENT_SINGLETON.client.is_none() {
-                CLIENT_SINGLETON.give_client(Client::new());
-            }
-        }
-    }
-
-    pub fn take_singleton() -> Client {
-        unsafe { CLIENT_SINGLETON.take_client() }
-    }
-
-    pub fn give_singleton(client: Client) {
-        unsafe { CLIENT_SINGLETON.give_client(client) }
-    }
-
-    pub fn bus_connect(bus_config: &conf::BusConfig) -> Result<(), error::Error> {
-        Client::take_singleton().bus.connect(bus_config)
-    }
 
     pub fn new() -> Self {
         Client {
@@ -87,7 +36,7 @@ impl Client {
         }
     }
 
-    pub fn _bus_connect(&mut self,
+    pub fn bus_connect(&mut self,
         bus_config: &conf::BusConfig) -> Result<(), error::Error> {
         self.bus.connect(bus_config)
     }
@@ -119,19 +68,15 @@ impl Client {
     }
 
 
-    pub fn session(service: &str) -> ClientSession {
-
-        let mut client = Client::take_singleton();
-
-        client.last_session_id += 1;
-        let ses_id = client.last_session_id;
+    pub fn session(&mut self, service: &str) -> ClientSession {
+        self.last_session_id += 1;
+        let ses_id = self.last_session_id;
 
         let ses = Session::new(service, ses_id);
-        client.sessions.insert(ses_id, ses);
-
-        Client::give_singleton(client);
+        self.sessions.insert(ses_id, ses);
 
         ClientSession {
+            client: self,
             session_id: ses_id,
             requests: HashMap::new(),
         }
@@ -231,11 +176,13 @@ impl Client {
 
 }
 
-pub struct ClientSession {
+pub struct ClientSession<'s> {
+    client: &'s mut Client,
     session_id: usize,
+    requests: HashMap<usize, RequestContext>,
 }
 
-impl ClientSession {
+impl<'s> ClientSession<'s> {
 
     pub fn cleanup(&mut self) {
         self.client.sessions.remove(&self.session_id);
