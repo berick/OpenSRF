@@ -1,11 +1,12 @@
+use std::collections::HashMap;
 use log::{trace, warn, error};
 use super::*;
 
 pub struct Request {
-    complete: bool,
-    request_id: usize,
-    session_id: usize,
-    thread_trace: usize,
+    pub complete: bool,
+    pub request_id: usize,
+    pub session_id: usize,
+    pub thread_trace: usize,
 }
 
 pub enum SessionType {
@@ -59,7 +60,7 @@ impl Session {
             last_thread_trace: 0,
             thread: util::random_16(),
             backlog: Vec::new(),
-            requests: Vec::new(),
+            requests: HashMap::new(),
         }
     }
 

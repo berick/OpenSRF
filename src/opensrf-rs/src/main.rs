@@ -19,8 +19,11 @@ fn main() {
     let mut client = Client::new();
     client.bus_connect(conf.bus_config()).unwrap();
 
-    /*
     let ses = client.session("opensrf.settings");
+
+    client.connect(ses);
+
+    /*
 
     ses.connect().unwrap();
 
