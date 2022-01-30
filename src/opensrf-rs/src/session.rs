@@ -1,13 +1,6 @@
 use log::{trace, warn, error};
 use super::*;
 
-pub struct Request {
-    complete: bool,
-    request_id: usize,
-    session_id: usize,
-    thread_trace: usize,
-}
-
 pub enum SessionType {
     Client,
     Server,
@@ -41,10 +34,8 @@ pub struct Session {
     /// Replies have the same thread_trace as their request.
     pub last_thread_trace: usize,
 
-    /// Backlog of unprocessed messages received for this session.
+    /// Backlog of unprocessed message received for this session.
     pub backlog: Vec<message::Message>,
-
-    pub requests: HashMap<usize, Request>,
 }
 
 impl Session {
@@ -59,7 +50,6 @@ impl Session {
             last_thread_trace: 0,
             thread: util::random_16(),
             backlog: Vec::new(),
-            requests: Vec::new(),
         }
     }
 
