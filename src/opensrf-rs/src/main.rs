@@ -21,90 +21,30 @@ fn main() {
 
     let ses = client.session("opensrf.settings");
 
-    client.connect(ses);
-
-    /*
-
-    ses.connect().unwrap();
+    client.connect(ses).unwrap();
 
     let params = vec![json::from("Hello"), json::from("World")];
-    let rid = ses.request("opensrf.system.echo", params).unwrap();
+    let req = client.request(ses, "opensrf.system.echo", params).unwrap();
 
-    while !ses.request_complete(rid) {
-        match ses.recv(rid, 10).unwrap() {
+    while !client.complete(req) {
+        match client.recv(req, 10).unwrap() {
             Some(value) => println!("GOT RESPONSE: {}", value.dump()),
             None => break,
         }
     }
-
-    ses.disconnect().unwrap();
-    ses.cleanup();
-
-    */
-
-    let sid = client.session("opensrf.settings");
-
-    client.connect(sid);
 
     let params = vec![json::from("Hello"), json::from("World")];
+    let req = client.request(ses, "opensrf.system.echo", params).unwrap();
 
-    let rid = client.request(sid, "opensrf.system.echo", params).unwrap();
-
-    while !client.complete(rid) {
-        match client.recv(rid, 10).unwrap() {
+    while !client.complete(req) {
+        match client.recv(req, 10).unwrap() {
             Some(value) => println!("GOT RESPONSE: {}", value.dump()),
             None => break,
         }
     }
 
-    client.disconnect(sid).unwrap();
-    client.cleanup(sid);
-
-    /*
-    let mut ses = client.session("opensrf.settings");
-
-    ses.connect().unwrap();
-
-    let mut req = ses.request("opensrf.system.echo", params).unwrap();
-
-    while !req.complete() {
-        match req.recv(10).unwrap() {
-            Some(value) => println!("GOT RESPONSE: {}", value.dump()),
-            None => break,
-        }
-    }
-
-    ses.disconnect().unwrap();
-    ses.cleanup();
-
-    ses.connect().unwrap();
-
-    ses.request(
-        "opensrf.system.echo",
-        vec![json::from("Hello"), json::from("World")]
-    ).unwrap();
-
-    while !ses.request_complete() {
-        match ses.recv(10).unwrap() {
-            Some(value) => println!("GOT RESPONSE: {}", value.dump()),
-            None => break,
-        }
-    }
-
-    ses.request(
-        "opensrf.system.echo",
-        vec![json::from("Hello"), json::from("World")]
-    ).unwrap();
-
-    while !ses.request_complete() {
-        match ses.recv(10).unwrap() {
-            Some(value) => println!("GOT RESPONSE: {}", value.dump()),
-            None => break,
-        }
-    }
-
-    ses.disconnect().unwrap();
-    */
+    client.disconnect(ses).unwrap();
+    client.cleanup(ses);
 }
 
 
