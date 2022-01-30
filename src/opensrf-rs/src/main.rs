@@ -16,10 +16,14 @@ fn main() {
     let mut conf = ClientConfig::new();
     conf.load_file("conf/opensrf_client.yml");
 
-    let mut client = Client::new();
-    client.bus_connect(conf.bus_config()).unwrap();
+    Client::init_singleton();
+    let mut client = Client::singleton();
+
+    Client::bus_connect(conf.bus_config()).unwrap();
 
     let mut ses = client.session("opensrf.settings");
+
+    /*
 
     ses.connect().unwrap();
 
@@ -36,6 +40,7 @@ fn main() {
 
     ses.disconnect().unwrap();
     ses.cleanup();
+    */
 
     /*
 
