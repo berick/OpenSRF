@@ -6,6 +6,7 @@ use opensrf::message::Payload;
 use opensrf::message::Method;
 use opensrf::message::Message;
 use opensrf::client::Client;
+use opensrf::client::ClientRequest;
 
 use redis;
 use redis::Commands;
@@ -29,8 +30,8 @@ fn main() {
     let params2 = vec![json::from("Hello"), json::from("World")];
     let req2 = client.request(ses, "opensrf.system.echo", params2).unwrap();
 
-    while !client.complete(req2) {
-        match client.recv(req2, 10).unwrap() {
+    while !client.complete(&req2) {
+        match client.recv(&req2, 10).unwrap() {
             Some(value) => println!("REQ2 GOT RESPONSE: {}", value.dump()),
             None => {
                 println!("req2 returned None");
@@ -39,8 +40,8 @@ fn main() {
         }
     }
 
-    while !client.complete(req) {
-        match client.recv(req, 10).unwrap() {
+    while !client.complete(&req) {
+        match client.recv(&req, 10).unwrap() {
             Some(value) => println!("REQ1 GOT RESPONSE: {}", value.dump()),
             None => {
                 println!("req1 returned None");

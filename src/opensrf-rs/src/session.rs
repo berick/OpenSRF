@@ -84,7 +84,7 @@ impl Session {
     }
 
     /// Returns true if the provided request has pending replies
-    pub fn has_replies(&self, thread_trace: usize) -> bool {
+    pub fn has_pending_replies(&self, thread_trace: usize) -> bool {
         self.backlog.iter().any(|r| r.thread_trace() == thread_trace)
     }
 }

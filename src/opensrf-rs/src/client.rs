@@ -14,6 +14,12 @@ use super::session::SessionType;
 
 const CONNECT_TIMEOUT: i32 = 10;
 
+pub struct ClientRequest {
+    pub request_id: usize,
+    pub session_id: usize,
+    pub thread_trace: usize,
+}
+
 pub struct Client {
     bus: bus::Bus,
 
@@ -229,6 +235,12 @@ impl Client {
             }
         );
 
+        let req = ClientRequest {
+            session_id: session_id,
+            request_id: self.last_request_id,
+            thread_trace: thread_trace,
+        };
+
         let msg = Message::new(MessageType::Connect,
             thread_trace, message::Payload::NoPayload);
 
@@ -244,7 +256,7 @@ impl Client {
             let start = time::SystemTime::now();
 
             trace!("connect() calling receive with timeout={}", timeout);
-            let recv_op = self.recv(thread_trace, timeout)?;
+            let recv_op = self.recv(&req, timeout)?;
 
             let ses = self.ses_mut(session_id);
             if ses.connected { return Ok(()) }
@@ -281,7 +293,7 @@ impl Client {
         &mut self,
         session_id: usize,
         method: &str,
-        params: Vec<json::JsonValue>) -> Result<usize, error::Error> {
+        params: Vec<json::JsonValue>) -> Result<ClientRequest, error::Error> {
 
         let mut ses = self.sessions.get_mut(&session_id).unwrap();
 
@@ -317,20 +329,21 @@ impl Client {
             }
         );
 
-        Ok(self.last_request_id)
+        Ok(ClientRequest {
+            session_id: session_id,
+            request_id: self.last_request_id,
+            thread_trace: ses.last_thread_trace
+        })
     }
 
-    fn recv_from_backlog(&mut self, request_id: usize) -> Option<message::Message> {
+    fn recv_from_backlog(&mut self, req: &ClientRequest) -> Option<message::Message> {
+        let ses = self.ses_mut(req.session_id);
 
-        let ses = self.get_ses_by_req_mut(request_id);
-
-        let req = ses.requests.get(&request_id).unwrap();
-
-        trace!("recv_from_backlog() id={} tt={}", request_id, req.thread_trace);
+        trace!("recv_from_backlog() id={} tt={}", req.request_id, req.thread_trace);
 
         match ses.backlog.iter().position(|resp| resp.thread_trace() == req.thread_trace) {
             Some(index) => {
-                trace!("recv_from_backlog() found response for request id={}", request_id);
+                trace!("recv_from_backlog() found response for request id={}", req.request_id);
                 return Some(ses.backlog.remove(index));
             }
             None => None,
@@ -341,15 +354,14 @@ impl Client {
     // id arrives (or times out).
     pub fn recv(
         &mut self,
-        request_id: usize,
+        req: &ClientRequest,
         mut timeout: i32) -> Result<Option<json::JsonValue>, error::Error> {
 
         let mut resp: Result<Option<json::JsonValue>, error::Error> = Ok(None);
 
-        if self.complete(request_id) { return resp; }
+        if self.complete(req) { return resp; }
 
-        let mut req = self.get_req_by_id(request_id);
-
+        let request_id = req.request_id;
         let session_id = req.session_id;
         let thread_trace = req.thread_trace;
 
@@ -357,8 +369,8 @@ impl Client {
 
         // Reply for this request was previously pulled from the
         // bus and tossed into our queue.
-        if let Some(msg) = self.recv_from_backlog(request_id) {
-            return self.handle_reply(session_id, request_id, &msg);
+        if let Some(msg) = self.recv_from_backlog(req) {
+            return self.handle_reply(req, &msg);
         }
 
         while timeout >= 0 {
@@ -384,7 +396,7 @@ impl Client {
             if msg.thread_trace() == thread_trace {
 
                 found = true;
-                resp = self.handle_reply(session_id, request_id, &msg);
+                resp = self.handle_reply(req, &msg);
 
             } else {
 
@@ -414,12 +426,12 @@ impl Client {
 
     fn handle_reply(
         &mut self,
-        session_id: usize,
-        request_id: usize,
+        req: &ClientRequest,
         msg: &message::Message
     ) -> Result<Option<json::JsonValue>, error::Error> {
 
-        trace!("handle_reply() for ses={} req={}", session_id, request_id);
+        let request_id = req.request_id;
+        let session_id = req.session_id;
 
         if let Payload::Result(resp) = msg.payload() {
             trace!("handle_reply() found response for req={}", request_id);
@@ -453,17 +465,18 @@ impl Client {
             return Ok(None);
         }
 
-        error!("Request::recv() unexpected response {}", msg.to_json_value().dump());
+        error!("handle_reply request={} unexpected response {}",
+            request_id, msg.to_json_value().dump());
 
         self.sessions.get_mut(&session_id).unwrap().reset();
 
         return Err(error::Error::BadResponseError);
     }
 
-    pub fn complete(&self, request_id: usize) -> bool {
-        let ses = self.get_ses_by_req(request_id);
-        match ses.requests.get(&request_id) {
-            Some(req) => req.complete && !ses.has_replies(req.thread_trace),
+    pub fn complete(&self, req: &ClientRequest) -> bool {
+        let ses = self.ses(req.session_id);
+        match ses.requests.get(&req.request_id) {
+            Some(r) => r.complete && !ses.has_pending_replies(r.thread_trace),
             None => false,
         }
     }
