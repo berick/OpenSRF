@@ -51,7 +51,8 @@ pub struct Session {
 impl Session {
 
     pub fn new(service: &str, session_id: usize) -> Self {
-        Session {
+
+        let ses = Session {
             session_id,
             session_type: SessionType::Client,
             service: String::from(service),
@@ -61,7 +62,12 @@ impl Session {
             thread: util::random_16(),
             backlog: Vec::new(),
             requests: HashMap::new(),
-        }
+        };
+
+        trace!("Creating session service={} id={} thread={}",
+            service, session_id, ses.thread);
+
+        ses
     }
 
     pub fn reset(&mut self) {
@@ -75,6 +81,11 @@ impl Session {
         } else {
             &self.service
         }
+    }
+
+    /// Returns true if the provided request has pending replies
+    pub fn has_replies(&self, thread_trace: usize) -> bool {
+        self.backlog.iter().any(|r| r.thread_trace() == thread_trace)
     }
 }
 
