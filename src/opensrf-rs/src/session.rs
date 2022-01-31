@@ -1,6 +1,32 @@
 use std::collections::HashMap;
+use std::fmt;
 use log::{trace, warn, error};
 use super::*;
+
+// Immutable context structs the caller owns for managing
+// sessions and requests.  These link to mutable variants
+// internally so we don't have to bandy about mutable refs.
+pub struct ClientSession {
+    pub session_id: usize,
+    pub thread: String,
+}
+
+impl fmt::Display for ClientSession {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "session sesid={} thread={}", self.session_id, self.thread)
+    }
+}
+
+pub struct ClientRequest {
+    pub session_id: usize,
+    pub thread_trace: usize,
+}
+
+impl fmt::Display for ClientRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "request sesid={} thread_trace={}", self.session_id, self.thread_trace)
+    }
+}
 
 pub struct Request {
     pub complete: bool,

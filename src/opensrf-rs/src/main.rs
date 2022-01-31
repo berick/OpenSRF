@@ -6,8 +6,8 @@ use opensrf::message::Payload;
 use opensrf::message::Method;
 use opensrf::message::Message;
 use opensrf::client::Client;
-use opensrf::client::ClientSession;
-use opensrf::client::ClientRequest;
+use opensrf::session::ClientSession;
+use opensrf::session::ClientRequest;
 
 use redis;
 use redis::Commands;

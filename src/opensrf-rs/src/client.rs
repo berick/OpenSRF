@@ -1,6 +1,7 @@
 use log::{trace, warn, error};
 use std::collections::HashMap;
 use std::time;
+use std::fmt;
 use super::*;
 use super::message::TransportMessage;
 use super::message::Message;
@@ -9,21 +10,12 @@ use super::message::MessageStatus;
 use super::message::Method;
 use super::message::Payload;
 use super::session::Request;
+use super::session::ClientRequest;
 use super::session::Session;
+use super::session::ClientSession;
 use super::session::SessionType;
 
 const CONNECT_TIMEOUT: i32 = 10;
-
-// Immutable context structs the caller owns for managing
-// sessions and requests.  These link to mutable variants
-// internally so we don't have to bandy about mutable refs.
-pub struct ClientSession {
-    pub session_id: usize,
-}
-pub struct ClientRequest {
-    pub session_id: usize,
-    pub thread_trace: usize,
-}
 
 pub struct Client {
     bus: bus::Bus,
@@ -59,25 +51,6 @@ impl Client {
         self.bus.clear(&self.bus.bus_id())
     }
 
-    fn get_ses_by_thread(&self, thread: &str) -> Option<&Session> {
-
-        if let Some(index) =
-            self.sessions.values().position(|ses| &ses.thread == thread) {
-            Some(self.sessions.get(&index));
-        }
-
-        None
-    }
-
-    fn get_ses_by_thread_mut(&mut self, thread: &str) -> Option<&mut Session> {
-        if let Some(index) =
-            self.sessions.values().position(|ses| &ses.thread == thread) {
-            Some(self.sessions.get_mut(&index));
-        }
-
-        None
-    }
-
     fn ses(&self, session_id: usize) -> &Session {
         self.sessions.get(&session_id).unwrap()
     }
@@ -99,22 +72,26 @@ impl Client {
         let session_id = self.last_session_id;
 
         let ses = Session::new(service, session_id);
+        let thread = ses.thread.to_string();
         self.sessions.insert(session_id, ses);
 
         ClientSession {
-            session_id: session_id
+            session_id: session_id,
+            thread: thread,
         }
     }
 
     /// Returns the first transport message pulled from the pending
     /// messages queue that matches the provided thread.
-    fn recv_session_from_backlog(&mut self,
-        thread: &str, mut timeout: i32) -> Option<TransportMessage> {
+    fn recv_session_from_backlog(&mut self, session_id: usize,
+        mut timeout: i32) -> Option<TransportMessage> {
+
+        let thread = &self.ses(session_id).thread;
 
         if let Some(index) =
             self.transport_backlog.iter().position(|tm| tm.thread() == thread) {
 
-            trace!("Found a stashed reply for thread {}", thread);
+            trace!("Found a stashed reply for {}", thread);
 
             Some(self.transport_backlog.remove(index))
 
@@ -129,8 +106,10 @@ impl Client {
     ///
     /// Messages that don't match the provided thread are pushed
     /// onto the pending transport message queue.
-    pub fn recv_session_from_bus(&mut self, thread: &str, mut timeout: i32) ->
+    pub fn recv_session_from_bus(&mut self, session_id: usize, mut timeout: i32) ->
         Result<Option<TransportMessage>, error::Error> {
+
+        let thread = self.ses(session_id).thread.to_string();
 
         loop {
 
@@ -165,14 +144,12 @@ impl Client {
     pub fn recv_session(&mut self, session_id: usize, mut timeout: i32) ->
         Result<Option<TransportMessage>, error::Error> {
 
-        let thread = self.ses(session_id).thread.to_string();
+        trace!("recv_session() ses_id={} timeout={}", session_id, timeout);
 
-        trace!("recv_session() with thread={} timeout={}", thread, timeout);
-
-        let tm = match self.recv_session_from_backlog(&thread, timeout) {
+        let tm = match self.recv_session_from_backlog(session_id, timeout) {
             Some(t) => t,
             None => {
-                match self.recv_session_from_bus(&thread, timeout)? {
+                match self.recv_session_from_bus(session_id, timeout)? {
                     Some(t2) => t2,
                     None => { return Ok(None); }
                 }
@@ -188,18 +165,17 @@ impl Client {
         Ok(Some(tm))
     }
 
-    pub fn cleanup(&mut self, session: &ClientSession) {
-        self.sessions.remove(&session.session_id);
+    pub fn cleanup(&mut self, client_ses: &ClientSession) {
+        self.sessions.remove(&client_ses.session_id);
     }
 
-    pub fn connect(&mut self, session: &ClientSession) -> Result<(), error::Error> {
+    pub fn connect(&mut self, client_ses: &ClientSession) -> Result<(), error::Error> {
 
-        let session_id = session.session_id;
+        let session_id = client_ses.session_id;
         let mut ses = self.sessions.get_mut(&session_id).unwrap();
         ses.last_thread_trace += 1;
 
         let thread_trace = ses.last_thread_trace;
-        let thread = ses.thread.to_string();
         let remote_addr = ses.remote_addr().to_string();
 
         ses.requests.insert(thread_trace,
@@ -219,7 +195,7 @@ impl Client {
             thread_trace, message::Payload::NoPayload);
 
         let tm = TransportMessage::new_with_body(
-            &remote_addr, self.bus.bus_id(), &thread, msg);
+            &remote_addr, self.bus.bus_id(), &client_ses.thread, msg);
 
         self.bus.send(&tm)?;
 
@@ -241,9 +217,9 @@ impl Client {
         Err(error::Error::ConnectTimeoutError)
     }
 
-    pub fn disconnect(&mut self, session: &ClientSession) -> Result<(), error::Error> {
+    pub fn disconnect(&mut self, client_ses: &ClientSession) -> Result<(), error::Error> {
 
-        let session_id = session.session_id;
+        let session_id = client_ses.session_id;
 
         // Disconnects need a thread trace, but no request ID, since
         // we do not track them internally -- they produce no response.
@@ -255,7 +231,7 @@ impl Client {
             ses.last_thread_trace, message::Payload::NoPayload);
 
         let tm = TransportMessage::new_with_body(
-            &ses.remote_addr(), self.bus.bus_id(), &ses.thread, msg);
+            &ses.remote_addr(), self.bus.bus_id(), &client_ses.thread, msg);
 
         self.bus.send(&tm)?;
 
@@ -267,11 +243,11 @@ impl Client {
 
     pub fn request(
         &mut self,
-        session: &ClientSession,
+        client_ses: &ClientSession,
         method: &str,
         params: Vec<json::JsonValue>) -> Result<ClientRequest, error::Error> {
 
-        let session_id = session.session_id;
+        let session_id = client_ses.session_id;
         let mut ses = self.sessions.get_mut(&session_id).unwrap();
 
         ses.last_thread_trace += 1;
@@ -287,7 +263,7 @@ impl Client {
         };
 
         let tm = TransportMessage::new_with_body(
-            remote_addr, self.bus.bus_id(), &ses.thread, req);
+            remote_addr, self.bus.bus_id(), &client_ses.thread, req);
 
         self.bus.send(&tm)?;
 
@@ -352,7 +328,7 @@ impl Client {
 
             // Could return a response to any request that's linked
             // to this session.
-            let tm = match self.recv_session(session_id, timeout)? {
+            let tm = match self.recv_session(req.session_id, timeout)? {
                 Some(m) => m,
                 None => { return resp; }
             };
