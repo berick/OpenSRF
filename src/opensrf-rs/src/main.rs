@@ -26,20 +26,26 @@ fn main() {
     let params = vec![json::from("Hello"), json::from("World")];
     let req = client.request(ses, "opensrf.system.echo", params).unwrap();
 
-    while !client.complete(req) {
-        match client.recv(req, 10).unwrap() {
-            Some(value) => println!("GOT RESPONSE: {}", value.dump()),
-            None => break,
+    let params2 = vec![json::from("Hello"), json::from("World")];
+    let req2 = client.request(ses, "opensrf.system.echo", params2).unwrap();
+
+    while !client.complete(req2) {
+        match client.recv(req2, 10).unwrap() {
+            Some(value) => println!("REQ2 GOT RESPONSE: {}", value.dump()),
+            None => {
+                println!("req2 returned None");
+                break;
+            }
         }
     }
 
-    let params = vec![json::from("Hello"), json::from("World")];
-    let req = client.request(ses, "opensrf.system.echo", params).unwrap();
-
     while !client.complete(req) {
         match client.recv(req, 10).unwrap() {
-            Some(value) => println!("GOT RESPONSE: {}", value.dump()),
-            None => break,
+            Some(value) => println!("REQ1 GOT RESPONSE: {}", value.dump()),
+            None => {
+                println!("req1 returned None");
+                break;
+            }
         }
     }
 
