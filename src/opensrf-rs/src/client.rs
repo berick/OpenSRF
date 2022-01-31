@@ -14,8 +14,13 @@ use super::session::SessionType;
 
 const CONNECT_TIMEOUT: i32 = 10;
 
+// Immutable context structs the caller owns for managing
+// sessions and requests.  These link to mutable variants
+// internally so we don't have to bandy about mutable refs.
+pub struct ClientSession {
+    pub session_id: usize,
+}
 pub struct ClientRequest {
-    pub request_id: usize,
     pub session_id: usize,
     pub thread_trace: usize,
 }
@@ -30,7 +35,6 @@ pub struct Client {
     transport_backlog: Vec<message::TransportMessage>,
 
     last_session_id: usize,
-    last_request_id: usize,
 }
 
 impl Client {
@@ -41,7 +45,6 @@ impl Client {
             sessions: HashMap::new(),
             transport_backlog: Vec::new(),
             last_session_id: 0,
-            last_request_id: 0,
         }
     }
 
@@ -75,15 +78,6 @@ impl Client {
         None
     }
 
-    fn get_ses_by_req(&self, request_id: usize) -> &Session {
-        for ses in self.sessions.values() {
-            if ses.requests.get(&request_id).is_some() {
-                return ses
-            }
-        }
-        panic!("Request {} has no session", request_id);
-    }
-
     fn ses(&self, session_id: usize) -> &Session {
         self.sessions.get(&session_id).unwrap()
     }
@@ -92,42 +86,24 @@ impl Client {
         self.sessions.get_mut(&session_id).unwrap()
     }
 
-    fn get_ses_by_req_mut(&mut self, request_id: usize) -> &mut Session {
-
-        let mut session_id = 0;
-        for mut ses in self.sessions.values() {
-            if ses.requests.get(&request_id).is_some() {
-                session_id = ses.session_id;
-            }
-        }
-
-        self.ses_mut(session_id)
+    fn req(&self, req: &ClientRequest) -> &Request {
+        self.ses(req.session_id).requests.get(&req.thread_trace).unwrap()
     }
 
-    fn get_req_by_id(&self, request_id: usize) -> &Request {
-        for ses in self.sessions.values() {
-            let req_op = ses.requests.get(&request_id);
-            if req_op.is_some() { return req_op.unwrap(); }
-        }
-        panic!("No Request with id {}", request_id);
+    fn req_mut(&mut self, req: &ClientRequest) -> &mut Request {
+        self.ses_mut(req.session_id).requests.get_mut(&req.thread_trace).unwrap()
     }
 
-    fn get_req_by_id_mut(&mut self, request_id: usize) -> &mut Request {
-        for ses in self.sessions.values_mut() {
-            let req_op = ses.requests.get_mut(&request_id);
-            if req_op.is_some() { return req_op.unwrap(); }
-        }
-        panic!("No Request with id {}", request_id);
-    }
-
-    pub fn session(&mut self, service: &str) -> usize {
+    pub fn session(&mut self, service: &str) -> ClientSession {
         self.last_session_id += 1;
         let session_id = self.last_session_id;
 
         let ses = Session::new(service, session_id);
         self.sessions.insert(session_id, ses);
 
-        session_id
+        ClientSession {
+            session_id: session_id
+        }
     }
 
     /// Returns the first transport message pulled from the pending
@@ -212,32 +188,30 @@ impl Client {
         Ok(Some(tm))
     }
 
-    pub fn cleanup(&mut self, session_id: usize) {
-        self.sessions.remove(&session_id);
+    pub fn cleanup(&mut self, session: &ClientSession) {
+        self.sessions.remove(&session.session_id);
     }
 
-    pub fn connect(&mut self, session_id: usize) -> Result<(), error::Error> {
+    pub fn connect(&mut self, session: &ClientSession) -> Result<(), error::Error> {
 
+        let session_id = session.session_id;
         let mut ses = self.sessions.get_mut(&session_id).unwrap();
         ses.last_thread_trace += 1;
-        self.last_request_id += 1;
 
         let thread_trace = ses.last_thread_trace;
         let thread = ses.thread.to_string();
         let remote_addr = ses.remote_addr().to_string();
 
-        ses.requests.insert(self.last_request_id,
+        ses.requests.insert(thread_trace,
             Request {
                 complete: false,
                 session_id: session_id,
-                request_id: self.last_request_id,
                 thread_trace: thread_trace,
             }
         );
 
         let req = ClientRequest {
             session_id: session_id,
-            request_id: self.last_request_id,
             thread_trace: thread_trace,
         };
 
@@ -267,7 +241,9 @@ impl Client {
         Err(error::Error::ConnectTimeoutError)
     }
 
-    pub fn disconnect(&mut self, session_id: usize) -> Result<(), error::Error> {
+    pub fn disconnect(&mut self, session: &ClientSession) -> Result<(), error::Error> {
+
+        let session_id = session.session_id;
 
         // Disconnects need a thread trace, but no request ID, since
         // we do not track them internally -- they produce no response.
@@ -291,10 +267,11 @@ impl Client {
 
     pub fn request(
         &mut self,
-        session_id: usize,
+        session: &ClientSession,
         method: &str,
         params: Vec<json::JsonValue>) -> Result<ClientRequest, error::Error> {
 
+        let session_id = session.session_id;
         let mut ses = self.sessions.get_mut(&session_id).unwrap();
 
         ses.last_thread_trace += 1;
@@ -314,24 +291,21 @@ impl Client {
 
         self.bus.send(&tm)?;
 
-        self.last_request_id += 1;
         let mut ses = self.sessions.get_mut(&session_id).unwrap();
 
-        trace!("request() session id={} adding request id={} tt={}",
-            session_id, self.last_request_id, ses.last_thread_trace);
+        trace!("request() session id={} adding request tt={}",
+            session_id, ses.last_thread_trace);
 
-        ses.requests.insert(self.last_request_id,
+        ses.requests.insert(ses.last_thread_trace,
             Request {
                 complete: false,
                 session_id: session_id,
-                request_id: self.last_request_id,
                 thread_trace: ses.last_thread_trace,
             }
         );
 
         Ok(ClientRequest {
             session_id: session_id,
-            request_id: self.last_request_id,
             thread_trace: ses.last_thread_trace
         })
     }
@@ -339,11 +313,11 @@ impl Client {
     fn recv_from_backlog(&mut self, req: &ClientRequest) -> Option<message::Message> {
         let ses = self.ses_mut(req.session_id);
 
-        trace!("recv_from_backlog() id={} tt={}", req.request_id, req.thread_trace);
+        trace!("recv_from_backlog() tt={}", req.thread_trace);
 
         match ses.backlog.iter().position(|resp| resp.thread_trace() == req.thread_trace) {
             Some(index) => {
-                trace!("recv_from_backlog() found response for request id={}", req.request_id);
+                trace!("recv_from_backlog() found response for request tt={}", req.thread_trace);
                 return Some(ses.backlog.remove(index));
             }
             None => None,
@@ -361,11 +335,10 @@ impl Client {
 
         if self.complete(req) { return resp; }
 
-        let request_id = req.request_id;
         let session_id = req.session_id;
         let thread_trace = req.thread_trace;
 
-        trace!("recv() request_id={} thread_trace={}", request_id, thread_trace);
+        trace!("recv() thread_trace={}", thread_trace);
 
         // Reply for this request was previously pulled from the
         // bus and tossed into our queue.
@@ -430,11 +403,10 @@ impl Client {
         msg: &message::Message
     ) -> Result<Option<json::JsonValue>, error::Error> {
 
-        let request_id = req.request_id;
         let session_id = req.session_id;
 
         if let Payload::Result(resp) = msg.payload() {
-            trace!("handle_reply() found response for req={}", request_id);
+            trace!("handle_reply() found response for tt={}", req.thread_trace);
             return Ok(Some(resp.content().clone()));
         };
 
@@ -447,8 +419,8 @@ impl Client {
                 },
                 MessageStatus::Continue => {}, // TODO
                 MessageStatus::Complete => {
-                    trace!("Marking request {} as complete", request_id);
-                    self.get_req_by_id_mut(request_id).complete = true;
+                    trace!("Marking request tt={} as complete", req.thread_trace);
+                    self.req_mut(req).complete = true;
                 },
                 MessageStatus::Timeout => {
                     self.sessions.get_mut(&session_id).unwrap().reset();
@@ -465,8 +437,8 @@ impl Client {
             return Ok(None);
         }
 
-        error!("handle_reply request={} unexpected response {}",
-            request_id, msg.to_json_value().dump());
+        error!("handle_reply request tt={} unexpected response {}",
+            req.thread_trace, msg.to_json_value().dump());
 
         self.sessions.get_mut(&session_id).unwrap().reset();
 
@@ -475,7 +447,7 @@ impl Client {
 
     pub fn complete(&self, req: &ClientRequest) -> bool {
         let ses = self.ses(req.session_id);
-        match ses.requests.get(&req.request_id) {
+        match ses.requests.get(&req.thread_trace) {
             Some(r) => r.complete && !ses.has_pending_replies(r.thread_trace),
             None => false,
         }

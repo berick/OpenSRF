@@ -6,6 +6,7 @@ use opensrf::message::Payload;
 use opensrf::message::Method;
 use opensrf::message::Message;
 use opensrf::client::Client;
+use opensrf::client::ClientSession;
 use opensrf::client::ClientRequest;
 
 use redis;
@@ -22,13 +23,13 @@ fn main() {
 
     let ses = client.session("opensrf.settings");
 
-    client.connect(ses).unwrap();
+    client.connect(&ses).unwrap();
 
     let params = vec![json::from("Hello"), json::from("World")];
-    let req = client.request(ses, "opensrf.system.echo", params).unwrap();
+    let req = client.request(&ses, "opensrf.system.echo", params).unwrap();
 
     let params2 = vec![json::from("Hello"), json::from("World")];
-    let req2 = client.request(ses, "opensrf.system.echo", params2).unwrap();
+    let req2 = client.request(&ses, "opensrf.system.echo", params2).unwrap();
 
     while !client.complete(&req2) {
         match client.recv(&req2, 10).unwrap() {
@@ -50,8 +51,8 @@ fn main() {
         }
     }
 
-    client.disconnect(ses).unwrap();
-    client.cleanup(ses);
+    client.disconnect(&ses).unwrap();
+    client.cleanup(&ses);
 }
 
 

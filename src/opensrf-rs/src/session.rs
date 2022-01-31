@@ -4,7 +4,6 @@ use super::*;
 
 pub struct Request {
     pub complete: bool,
-    pub request_id: usize,
     pub session_id: usize,
     pub thread_trace: usize,
 }
