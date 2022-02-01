@@ -73,6 +73,18 @@ impl Client {
         client_ses
     }
 
+    pub fn linked_session(&mut self, service: &str) -> LinkedClientSession {
+
+        let ses = Session::new(service);
+        let thread = ses.thread.to_string();
+        self.sessions.insert(thread.to_string(), ses);
+
+        let client_ses = LinkedClientSession::new(self, &thread);
+
+        client_ses
+    }
+
+
     /// Returns the first transport message pulled from the pending
     /// messages queue that matches the provided thread.
     fn recv_session_from_backlog(
@@ -426,4 +438,64 @@ impl Client {
     }
 }
 
+pub struct LinkedClientSession<'a> {
+    client: &'a mut Client,
+    thread: String,
+}
 
+impl<'a> LinkedClientSession<'a> {
+    pub fn new(client: &'a mut Client, thread: &str) -> Self {
+        LinkedClientSession {
+            client,
+            thread: thread.to_string(),
+        }
+    }
+    pub fn thread(&self) -> &str {
+        &self.thread
+    }
+
+    pub fn request(
+        &mut self,
+        method: &str,
+        params: Vec<json::JsonValue>
+    ) -> Result<ClientRequest, error::Error> {
+
+        let thread = self.thread().to_string();
+
+        // self.sessions lookup instead of self.get_mut to avoid borrow
+        let mut ses = self.client.sessions.get_mut(&thread).unwrap();
+
+        ses.last_thread_trace += 1;
+
+        let method = Payload::Method(Method::new(method, params));
+
+        let req = Message::new(MessageType::Request, ses.last_thread_trace, method);
+
+        // If we're not connected, all requets go to the root service address.
+        let remote_addr = match ses.connected {
+            true => ses.remote_addr(),
+            false => &ses.service
+        };
+
+        let tm = TransportMessage::new_with_body(
+            remote_addr, self.client.bus.bus_id(), &thread, req);
+
+        self.client.bus.send(&tm)?;
+
+        let mut ses = self.client.ses_mut(&thread);
+
+        trace!("request() adding request to {}", &thread); // TODO
+
+        ses.requests.insert(ses.last_thread_trace,
+            Request {
+                complete: false,
+                thread: thread.to_string(),
+                thread_trace: ses.last_thread_trace,
+            }
+        );
+
+        Ok(ClientRequest::new(&thread, ses.last_thread_trace))
+    }
+
+
+}
