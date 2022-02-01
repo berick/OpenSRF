@@ -1,7 +1,7 @@
 use std::time;
 use std::cmp;
 use std::fmt;
-use log::{trace, error};
+use log::{trace, debug, error};
 use redis;
 use redis::Commands;
 use super::conf::BusConfig;
@@ -11,17 +11,51 @@ use super::util;
 
 /// Manages the Redis connection.
 pub struct Bus {
-    redis: Option<redis::Client>,
+    connection: redis::Connection,
     bus_id: String,
 }
 
 impl Bus {
 
-    pub fn new(bus_id: String) -> Self {
-        Bus {
+    pub fn new(bus_config: &BusConfig, bus_id: String) -> Result<Self, error::Error> {
+
+        let uri = Bus::connection_uri(bus_config)?;
+        debug!("Bus::new() connecting to {}", uri);
+
+        let client = redis::Client::open(uri)?;
+
+        let connection = match client.get_connection() {
+            Ok(c) => c,
+            Err(e) => { return Err(error::Error::BusError(e)); }
+        };
+
+        Ok(Bus {
             bus_id: bus_id,
-            redis: None
-        }
+            connection: connection,
+        })
+    }
+
+    /// Generates the Redis connection URI
+    fn connection_uri(bus_config: &BusConfig) -> Result<String, error::Error> {
+        let uri: String;
+
+        if let Some(ref s) = bus_config.sock() {
+            uri = format!("unix://{}", s);
+        } else {
+            if let Some(ref h) = bus_config.host() {
+                if let Some(ref p) = bus_config.port() {
+                    uri = format!("redis://{}:{}/", h, p);
+                } else {
+                    error!("Bus requires 'sock' or 'host' + 'port'");
+                    return Err(error::Error::ClientConfigError);
+                }
+            } else {
+                error!("Bus requires 'sock' or 'host' + 'port'");
+                return Err(error::Error::ClientConfigError);
+            }
+        };
+
+        Ok(uri)
     }
 
     /// Generates a unique address with a prefix string.
@@ -33,80 +67,26 @@ impl Bus {
         &self.bus_id
     }
 
-    /// Connect to the Redis instance.
-    ///
-    /// This must be called before any send/recv calls are made.
-    pub fn connect(&mut self, bus_config: &BusConfig) -> Result<(), error::Error> {
-
-        let dest = self.dest_str(bus_config)?;
-
-        let client = match redis::Client::open(dest) {
-            Ok(c) => c,
-            Err(e) => { return Err(error::Error::BusError(e)); }
-        };
-
-        // Make sure we can get a handle on our connection before
-        // we call this connect() a success.
-        if let Err(e) = client.get_connection() {
-            return Err(error::Error::BusError(e));
-        }
-
-        self.redis = Some(client);
-
-        Ok(())
-    }
-
-    /// Generates the Redis connection URI
-    pub fn dest_str(&self, bus_config: &BusConfig) -> Result<String, error::Error> {
-        let dest: String;
-
-        if let Some(ref s) = bus_config.sock() {
-            dest = format!("unix://{}", s);
-        } else {
-            if let Some(ref h) = bus_config.host() {
-                if let Some(ref p) = bus_config.port() {
-                    dest = format!("redis://{}:{}/", h, p);
-                } else {
-                    error!("Bus requires 'sock' or 'host' + 'port'");
-                    return Err(error::Error::ClientConfigError);
-                }
-            } else {
-                error!("Bus requires 'sock' or 'host' + 'port'");
-                return Err(error::Error::ClientConfigError);
-            }
-        };
-
-        Ok(dest)
-    }
-
-    /// Get a handle on our internal Redis connection.
-    fn connection(&self) -> Result<redis::Connection, error::Error> {
-        match &self.redis {
-            Some(r) => match r.get_connection() {
-                Ok(c) => Ok(c),
-                Err(e) => Err(error::Error::BusError(e))
-            },
-            None => Err(error::Error::InternalApiError("Bus::connect() call needed"))
-        }
+    fn connection(&mut self) -> &mut redis::Connection {
+        &mut self.connection
     }
 
     /// Returns at most one String pulled from the queue or None if the
     /// pop times out or is interrupted.
     ///
     /// The string will be valid JSON string.
-    fn recv_one_chunk(&self, timeout: i32) -> Result<Option<String>, error::Error> {
+    fn recv_one_chunk(&mut self, timeout: i32) -> Result<Option<String>, error::Error> {
 
         trace!("recv_one_chunk() timeout={} for recipient {}", timeout, self.bus_id());
 
-        let mut con = self.connection()?;
-
         let mut value: String;
+        let bus_id = self.bus_id().to_string(); // XXX
 
         if timeout == 0 {
 
             // non-blocking
             // LPOP returns only the value
-            value = match con.lpop(self.bus_id(), None) {
+            value = match self.connection().lpop(&bus_id, None) {
                 Ok(c) => c,
                 Err(e) => match e.kind() {
                     redis::ErrorKind::TypeError => {
@@ -127,14 +107,14 @@ impl Bus {
 
             if timeout < 0 { // block indefinitely
 
-                resp = match con.blpop(self.bus_id(), 0) {
+                resp = match self.connection().blpop(&bus_id, 0) {
                     Ok(r) => r,
                     Err(e) => { return Err(error::Error::BusError(e)); }
                 };
 
             } else { // block up to timeout seconds
 
-                resp = match con.blpop(self.bus_id(), timeout as usize) {
+                resp = match self.connection().blpop(&bus_id, timeout as usize) {
                     Ok(r) => r,
                     Err(e) => { return Err(error::Error::BusError(e)); }
                 };
@@ -152,7 +132,7 @@ impl Bus {
 
     /// Returns at most one JSON value pulled from the queue or None if
     /// the list pop times out or the pop is interrupted by a signal.
-    fn recv_one_value(&self, timeout: i32) ->
+    fn recv_one_value(&mut self, timeout: i32) ->
         Result<Option<json::JsonValue>, error::Error> {
 
         let json_string = match self.recv_one_chunk(timeout)? {
@@ -180,7 +160,7 @@ impl Bus {
     /// * `timeout` - Time in seconds to wait for a value.
     ///     A negative value means to block indefinitely.
     ///     0 means do not block.
-    pub fn recv_json_value(&self, timeout: i32) ->
+    pub fn recv_json_value(&mut self, timeout: i32) ->
         Result<Option<json::JsonValue>, error::Error> {
 
         let mut option: Option<json::JsonValue>;
@@ -222,7 +202,7 @@ impl Bus {
         Ok(None)
     }
 
-    pub fn recv(&self, timeout: i32) -> Result<Option<TransportMessage>, error::Error> {
+    pub fn recv(&mut self, timeout: i32) -> Result<Option<TransportMessage>, error::Error> {
 
         let json_op = self.recv_json_value(timeout)?;
 
@@ -232,15 +212,14 @@ impl Bus {
         }
     }
 
-    pub fn send(&self, msg: &TransportMessage) -> Result<(), error::Error> {
-        let mut con = self.connection()?;
+    pub fn send(&mut self, msg: &TransportMessage) -> Result<(), error::Error> {
 
         let recipient = msg.to();
         let json_str = msg.to_json_value().dump();
 
         trace!("send() writing chunk to={}: {}", recipient, json_str);
 
-        let res: Result<i32, _> = con.rpush(recipient, json_str);
+        let res: Result<i32, _> = self.connection().rpush(recipient, json_str);
 
         if let Err(e) = res { return Err(error::Error::BusError(e)); }
 
@@ -248,10 +227,8 @@ impl Bus {
     }
 
     /// Clears the value for a key.
-    pub fn clear(&self, key: &str) -> Result<(), error::Error> {
-        let mut con = self.connection()?;
-
-        let res: Result<i32, _> = con.del(key);
+    pub fn clear(&mut self, key: &str) -> Result<(), error::Error> {
+        let res: Result<i32, _> = self.connection().del(key);
 
         match res {
             Ok(count) => trace!("con.del('{}') returned {}", key, count),

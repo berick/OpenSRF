@@ -3,6 +3,8 @@ use std::collections::HashMap;
 use std::time;
 use std::fmt;
 use super::*;
+use super::conf::BusConfig;
+use super::bus::Bus;
 use super::message::TransportMessage;
 use super::message::Message;
 use super::message::MessageType;
@@ -29,22 +31,20 @@ pub struct Client {
 
 impl Client {
 
-    pub fn new() -> Self {
-        Client {
-            bus: bus::Bus::new(bus::Bus::new_bus_id("client")),
+    pub fn new(bus_config: &BusConfig) -> Result<Self, error::Error> {
+
+        let bus = Bus::new(bus_config, Bus::new_bus_id("client"))?;
+
+        Ok(Client {
+            bus: bus,
             sessions: HashMap::new(),
             transport_backlog: Vec::new(),
-        }
+        })
     }
 
-    pub fn bus_connect(&mut self,
-        bus_config: &conf::BusConfig) -> Result<(), error::Error> {
-        self.bus.connect(bus_config)
-    }
-
-    pub fn bus_disconnect(&mut self) -> Result<(), error::Error> {
-        // NOTE redis::Client has no disconnect
-        self.bus.clear(&self.bus.bus_id())
+    pub fn clear_bus(&mut self) -> Result<(), error::Error> {
+        let bus_id = self.bus.bus_id().to_string(); // XXX
+        self.bus.clear(&bus_id)
     }
 
     fn ses(&self, thread: &str) -> &Session {

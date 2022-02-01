@@ -18,8 +18,7 @@ fn main() {
     let mut conf = ClientConfig::new();
     conf.load_file("conf/opensrf_client.yml");
 
-    let mut client = Client::new();
-    client.bus_connect(conf.bus_config()).unwrap();
+    let mut client = Client::new(conf.bus_config()).unwrap();
 
     let ses = client.session("opensrf.settings");
 
