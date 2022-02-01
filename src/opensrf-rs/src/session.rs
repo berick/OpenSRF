@@ -7,30 +7,57 @@ use super::*;
 // sessions and requests.  These link to mutable variants
 // internally so we don't have to bandy about mutable refs.
 pub struct ClientSession {
-    pub session_id: usize,
-    pub thread: String,
+    thread: String,
+}
+
+impl ClientSession {
+    pub fn new(thread: &str) -> Self {
+        ClientSession {
+            thread: thread.to_string(),
+        }
+    }
+    pub fn thread(&self) -> &str {
+        &self.thread
+    }
 }
 
 impl fmt::Display for ClientSession {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "session sesid={} thread={}", self.session_id, self.thread)
+        write!(f, "session thread={}", self.thread)
     }
 }
 
 pub struct ClientRequest {
-    pub session_id: usize,
-    pub thread_trace: usize,
+    thread: String,
+    thread_trace: usize,
+}
+
+impl ClientRequest {
+    pub fn new(thread: &str, thread_trace: usize) -> Self {
+        ClientRequest {
+            thread_trace,
+            thread: thread.to_string(),
+        }
+    }
+
+    pub fn thread(&self) -> &str {
+        &self.thread
+    }
+    pub fn thread_trace(&self) -> usize {
+        self.thread_trace
+    }
 }
 
 impl fmt::Display for ClientRequest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "request sesid={} thread_trace={}", self.session_id, self.thread_trace)
+        write!(f, "request thread={} thread_trace={}", self.thread, self.thread_trace)
     }
 }
 
+/// Internal mutable request
 pub struct Request {
     pub complete: bool,
-    pub session_id: usize,
+    pub thread: String,
     pub thread_trace: usize,
 }
 
@@ -39,16 +66,13 @@ pub enum SessionType {
     Server,
 }
 
+/// Internal mutable session
 pub struct Session {
 
     pub session_type: SessionType,
 
     /// Each session is identified on the network by a random thread string.
     pub thread: String,
-
-    /// Client/Server sessions are linked to Sessions via this internal
-    /// ID.  Slightly more efficient the cloning threads around.
-    pub session_id: usize,
 
     pub connected: bool,
 
@@ -75,10 +99,9 @@ pub struct Session {
 
 impl Session {
 
-    pub fn new(service: &str, session_id: usize) -> Self {
+    pub fn new(service: &str) -> Self {
 
         let ses = Session {
-            session_id,
             session_type: SessionType::Client,
             service: String::from(service),
             connected: false,
@@ -89,8 +112,7 @@ impl Session {
             requests: HashMap::new(),
         };
 
-        trace!("Creating session service={} id={} thread={}",
-            service, session_id, ses.thread);
+        trace!("Creating session service={} thread={}", service, ses.thread);
 
         ses
     }
