@@ -31,6 +31,7 @@ sudo apt install redis-server libredis-perl libhiredis-dev
 * Automatic time-based client reconnections (in Perl anyway, need to check C)
 * 'redis-cli' very useful for debugging
   * Especially 'redis-cli monitor'
+  * command: client list
 
 ## Opportunities
 
