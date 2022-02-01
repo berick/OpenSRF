@@ -20,13 +20,11 @@ const CONNECT_TIMEOUT: i32 = 10;
 pub struct Client {
     bus: bus::Bus,
 
-    sessions: HashMap<usize, Session>,
+    sessions: HashMap<String, Session>,
 
     /// Queue of receieved transport messages that have yet to be
     /// processed by any sessions.
     transport_backlog: Vec<message::TransportMessage>,
-
-    last_session_id: usize,
 }
 
 impl Client {
@@ -36,7 +34,6 @@ impl Client {
             bus: bus::Bus::new(bus::Bus::new_bus_id("client")),
             sessions: HashMap::new(),
             transport_backlog: Vec::new(),
-            last_session_id: 0,
         }
     }
 
@@ -46,50 +43,43 @@ impl Client {
     }
 
     pub fn bus_disconnect(&mut self) -> Result<(), error::Error> {
-        // TODO redis::Client has no disconnect?
-        // Does it happen automatically when the ref goes out of scope?
+        // NOTE redis::Client has no disconnect
         self.bus.clear(&self.bus.bus_id())
     }
 
-    fn ses(&self, session_id: usize) -> &Session {
-        self.sessions.get(&session_id).unwrap()
+    fn ses(&self, thread: &str) -> &Session {
+        self.sessions.get(thread).unwrap()
     }
 
-    fn ses_mut(&mut self, session_id: usize) -> &mut Session {
-        self.sessions.get_mut(&session_id).unwrap()
+    fn ses_mut(&mut self, thread: &str) -> &mut Session {
+        self.sessions.get_mut(thread).unwrap()
     }
 
     fn req(&self, req: &ClientRequest) -> &Request {
-        self.ses(req.session_id).requests.get(&req.thread_trace).unwrap()
+        self.ses(req.thread()).requests.get(&req.thread_trace()).unwrap()
     }
 
     fn req_mut(&mut self, req: &ClientRequest) -> &mut Request {
-        self.ses_mut(req.session_id).requests.get_mut(&req.thread_trace).unwrap()
+        self.ses_mut(req.thread()).requests.get_mut(&req.thread_trace()).unwrap()
     }
 
     pub fn session(&mut self, service: &str) -> ClientSession {
-        self.last_session_id += 1;
-        let session_id = self.last_session_id;
 
-        let ses = Session::new(service, session_id);
-        let thread = ses.thread.to_string();
-        self.sessions.insert(session_id, ses);
+        let ses = Session::new(service);
+        let client_ses = ClientSession::new(&ses.thread);
 
-        ClientSession {
-            session_id: session_id,
-            thread: thread,
-        }
+        self.sessions.insert(ses.thread.to_string(), ses);
+
+        client_ses
     }
 
     /// Returns the first transport message pulled from the pending
     /// messages queue that matches the provided thread.
     fn recv_session_from_backlog(
         &mut self,
-        session_id: usize,
+        thread: &str,
         mut timeout: i32
     ) -> Option<TransportMessage> {
-
-        let thread = &self.ses(session_id).thread;
 
         if let Some(index) =
             self.transport_backlog.iter().position(|tm| tm.thread() == thread) {
@@ -111,11 +101,9 @@ impl Client {
     /// onto the pending transport message queue.
     pub fn recv_session_from_bus(
         &mut self,
-        session_id: usize,
+        thread: &str,
         mut timeout: i32
     ) -> Result<Option<TransportMessage>, error::Error> {
-
-        let thread = self.ses(session_id).thread.to_string();
 
         loop {
 
@@ -149,23 +137,23 @@ impl Client {
     /// backlog or the bus.
     pub fn recv_session(
         &mut self,
-        session_id: usize,
+        thread: &str,
         mut timeout: i32
     ) -> Result<Option<TransportMessage>, error::Error> {
 
-        trace!("recv_session() ses_id={} timeout={}", session_id, timeout);
+        trace!("recv_session() timeout={} thread={}", timeout, thread);
 
-        let tm = match self.recv_session_from_backlog(session_id, timeout) {
+        let tm = match self.recv_session_from_backlog(thread, timeout) {
             Some(t) => t,
             None => {
-                match self.recv_session_from_bus(session_id, timeout)? {
+                match self.recv_session_from_bus(thread, timeout)? {
                     Some(t2) => t2,
                     None => { return Ok(None); }
                 }
             }
         };
 
-        let ses = self.ses_mut(session_id);
+        let ses = self.ses_mut(thread);
 
         if ses.remote_addr() != tm.from() {
             ses.remote_addr = Some(tm.from().to_string());
@@ -175,7 +163,7 @@ impl Client {
     }
 
     pub fn cleanup(&mut self, client_ses: &ClientSession) {
-        self.sessions.remove(&client_ses.session_id);
+        self.sessions.remove(client_ses.thread());
     }
 
     pub fn connect(
@@ -183,8 +171,9 @@ impl Client {
         client_ses: &ClientSession
     ) -> Result<(), error::Error> {
 
-        let session_id = client_ses.session_id;
-        let mut ses = self.sessions.get_mut(&session_id).unwrap();
+        trace!("Connecting {}", client_ses);
+
+        let mut ses = self.ses_mut(client_ses.thread());
         ses.last_thread_trace += 1;
 
         let thread_trace = ses.last_thread_trace;
@@ -193,21 +182,18 @@ impl Client {
         ses.requests.insert(thread_trace,
             Request {
                 complete: false,
-                session_id: session_id,
+                thread: client_ses.thread().to_string(),
                 thread_trace: thread_trace,
             }
         );
 
-        let req = ClientRequest {
-            session_id: session_id,
-            thread_trace: thread_trace,
-        };
+        let req = ClientRequest::new(client_ses.thread(), thread_trace);
 
         let msg = Message::new(MessageType::Connect,
             thread_trace, message::Payload::NoPayload);
 
         let tm = TransportMessage::new_with_body(
-            &remote_addr, self.bus.bus_id(), &client_ses.thread, msg);
+            &remote_addr, self.bus.bus_id(), client_ses.thread(), msg);
 
         self.bus.send(&tm)?;
 
@@ -220,7 +206,7 @@ impl Client {
             trace!("connect() calling receive with timeout={}", timeout);
             let recv_op = self.recv(&req, timeout)?;
 
-            let ses = self.ses_mut(session_id);
+            let ses = self.ses_mut(client_ses.thread());
             if ses.connected { return Ok(()) }
 
             timeout -= start.elapsed().unwrap().as_secs() as i32;
@@ -234,24 +220,22 @@ impl Client {
         client_ses: &ClientSession
     ) -> Result<(), error::Error> {
 
-        let session_id = client_ses.session_id;
-
         // Disconnects need a thread trace, but no request ID, since
         // we do not track them internally -- they produce no response.
-        self.ses_mut(session_id).last_thread_trace += 1;
+        self.ses_mut(client_ses.thread()).last_thread_trace += 1;
 
-        let ses = self.ses(session_id);
+        let ses = self.ses(client_ses.thread());
 
         let msg = Message::new(MessageType::Disconnect,
             ses.last_thread_trace, message::Payload::NoPayload);
 
         let tm = TransportMessage::new_with_body(
-            &ses.remote_addr(), self.bus.bus_id(), &client_ses.thread, msg);
+            &ses.remote_addr(), self.bus.bus_id(), client_ses.thread(), msg);
 
         self.bus.send(&tm)?;
 
         // Avoid changing remote_addr until above message is composed.
-        self.ses_mut(session_id).reset();
+        self.ses_mut(client_ses.thread()).reset();
 
         Ok(())
     }
@@ -263,8 +247,8 @@ impl Client {
         params: Vec<json::JsonValue>
     ) -> Result<ClientRequest, error::Error> {
 
-        let session_id = client_ses.session_id;
-        let mut ses = self.sessions.get_mut(&session_id).unwrap();
+        // self.sessions lookup instead of self.get_mut to avoid borrow
+        let mut ses = self.sessions.get_mut(client_ses.thread()).unwrap();
 
         ses.last_thread_trace += 1;
 
@@ -279,27 +263,23 @@ impl Client {
         };
 
         let tm = TransportMessage::new_with_body(
-            remote_addr, self.bus.bus_id(), &client_ses.thread, req);
+            remote_addr, self.bus.bus_id(), client_ses.thread(), req);
 
         self.bus.send(&tm)?;
 
-        let mut ses = self.sessions.get_mut(&session_id).unwrap();
+        let mut ses = self.ses_mut(client_ses.thread());
 
-        trace!("request() session id={} adding request tt={}",
-            session_id, ses.last_thread_trace);
+        trace!("request() adding request to {}", client_ses);
 
         ses.requests.insert(ses.last_thread_trace,
             Request {
                 complete: false,
-                session_id: session_id,
+                thread: client_ses.thread().to_string(),
                 thread_trace: ses.last_thread_trace,
             }
         );
 
-        Ok(ClientRequest {
-            session_id: session_id,
-            thread_trace: ses.last_thread_trace
-        })
+        Ok(ClientRequest::new(client_ses.thread(), ses.last_thread_trace))
     }
 
     fn recv_from_backlog(
@@ -307,21 +287,19 @@ impl Client {
         req: &ClientRequest
     ) -> Option<message::Message> {
 
-        let ses = self.ses_mut(req.session_id);
+        let ses = self.ses_mut(req.thread());
 
-        trace!("recv_from_backlog() tt={}", req.thread_trace);
+        trace!("recv_from_backlog() called for {}", req);
 
-        match ses.backlog.iter().position(|resp| resp.thread_trace() == req.thread_trace) {
+        match ses.backlog.iter().position(|resp| resp.thread_trace() == req.thread_trace()) {
             Some(index) => {
-                trace!("recv_from_backlog() found response for request tt={}", req.thread_trace);
+                trace!("recv_from_backlog() found response for {}", req);
                 return Some(ses.backlog.remove(index));
             }
             None => None,
         }
     }
 
-    // TODO loop on timeout until a response for the provided request
-    // id arrives (or times out).
     pub fn recv(
         &mut self,
         req: &ClientRequest,
@@ -332,10 +310,9 @@ impl Client {
 
         if self.complete(req) { return resp; }
 
-        let session_id = req.session_id;
-        let thread_trace = req.thread_trace;
+        let thread_trace = req.thread_trace();
 
-        trace!("recv() thread_trace={}", thread_trace);
+        trace!("recv() called for {}", req);
 
         // Reply for this request was previously pulled from the
         // bus and tossed into our queue.
@@ -349,7 +326,7 @@ impl Client {
 
             // Could return a response to any request that's linked
             // to this session.
-            let tm = match self.recv_session(req.session_id, timeout)? {
+            let tm = match self.recv_session(req.thread(), timeout)? {
                 Some(m) => m,
                 None => { return resp; }
             };
@@ -376,16 +353,14 @@ impl Client {
                 trace!("recv() found a reply for a request {}, stashing",
                     msg.thread_trace());
 
-                self.sessions.get_mut(&session_id).unwrap().backlog.push(msg);
+                self.ses_mut(req.thread()).backlog.push(msg);
             }
 
             while msg_list.len() > 0 {
                 trace!("recv() adding to session backlog thread_trace={}",
                     msg_list[0].thread_trace());
 
-                self.sessions.get_mut(&session_id).unwrap().backlog.push(
-                    msg_list.remove(0)
-                );
+                self.ses_mut(req.thread()).backlog.push(msg_list.remove(0));
             }
 
             if found { break; }
@@ -400,32 +375,32 @@ impl Client {
         msg: &message::Message
     ) -> Result<Option<json::JsonValue>, error::Error> {
 
-        let session_id = req.session_id;
-
         if let Payload::Result(resp) = msg.payload() {
-            trace!("handle_reply() found response for tt={}", req.thread_trace);
+            trace!("handle_reply() found response for {}", req);
             return Ok(Some(resp.content().clone()));
         };
+
+        let ses = self.ses_mut(req.thread());
 
         if let Payload::Status(stat) = msg.payload() {
 
             match stat.status() {
                 MessageStatus::Ok => {
-                    trace!("handle_reply() marking session {} as connected", session_id);
-                    self.sessions.get_mut(&session_id).unwrap().connected = true;
+                    trace!("handle_reply() marking {} as connected", req);
+                    ses.connected = true;
                 },
                 MessageStatus::Continue => {}, // TODO
                 MessageStatus::Complete => {
-                    trace!("Marking request tt={} as complete", req.thread_trace);
+                    trace!("Marking {} as complete", req);
                     self.req_mut(req).complete = true;
                 },
                 MessageStatus::Timeout => {
-                    self.sessions.get_mut(&session_id).unwrap().reset();
+                    self.ses_mut(req.thread()).reset();
                     warn!("Stateful session ended by server on keepalive timeout");
                     return Err(error::Error::RequestTimeoutError);
                 },
                 _ => {
-                    self.sessions.get_mut(&session_id).unwrap().reset();
+                    ses.reset();
                     warn!("Unexpected response status {}", stat.status());
                     return Err(error::Error::RequestTimeoutError);
                 }
@@ -434,17 +409,17 @@ impl Client {
             return Ok(None);
         }
 
-        error!("handle_reply request tt={} unexpected response {}",
-            req.thread_trace, msg.to_json_value().dump());
+        error!("handle_reply() {} unexpected response {}",
+            req.thread_trace(), msg.to_json_value().dump());
 
-        self.sessions.get_mut(&session_id).unwrap().reset();
+        ses.reset();
 
         return Err(error::Error::BadResponseError);
     }
 
     pub fn complete(&self, req: &ClientRequest) -> bool {
-        let ses = self.ses(req.session_id);
-        match ses.requests.get(&req.thread_trace) {
+        let ses = self.ses(req.thread());
+        match ses.requests.get(&req.thread_trace()) {
             Some(r) => r.complete && !ses.has_pending_replies(r.thread_trace),
             None => false,
         }
