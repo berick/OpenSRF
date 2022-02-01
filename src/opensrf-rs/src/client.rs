@@ -83,8 +83,11 @@ impl Client {
 
     /// Returns the first transport message pulled from the pending
     /// messages queue that matches the provided thread.
-    fn recv_session_from_backlog(&mut self, session_id: usize,
-        mut timeout: i32) -> Option<TransportMessage> {
+    fn recv_session_from_backlog(
+        &mut self,
+        session_id: usize,
+        mut timeout: i32
+    ) -> Option<TransportMessage> {
 
         let thread = &self.ses(session_id).thread;
 
@@ -106,8 +109,11 @@ impl Client {
     ///
     /// Messages that don't match the provided thread are pushed
     /// onto the pending transport message queue.
-    pub fn recv_session_from_bus(&mut self, session_id: usize, mut timeout: i32) ->
-        Result<Option<TransportMessage>, error::Error> {
+    pub fn recv_session_from_bus(
+        &mut self,
+        session_id: usize,
+        mut timeout: i32
+    ) -> Result<Option<TransportMessage>, error::Error> {
 
         let thread = self.ses(session_id).thread.to_string();
 
@@ -141,8 +147,11 @@ impl Client {
 
     /// Returns the first transport message pulled from either the
     /// backlog or the bus.
-    pub fn recv_session(&mut self, session_id: usize, mut timeout: i32) ->
-        Result<Option<TransportMessage>, error::Error> {
+    pub fn recv_session(
+        &mut self,
+        session_id: usize,
+        mut timeout: i32
+    ) -> Result<Option<TransportMessage>, error::Error> {
 
         trace!("recv_session() ses_id={} timeout={}", session_id, timeout);
 
@@ -169,7 +178,10 @@ impl Client {
         self.sessions.remove(&client_ses.session_id);
     }
 
-    pub fn connect(&mut self, client_ses: &ClientSession) -> Result<(), error::Error> {
+    pub fn connect(
+        &mut self,
+        client_ses: &ClientSession
+    ) -> Result<(), error::Error> {
 
         let session_id = client_ses.session_id;
         let mut ses = self.sessions.get_mut(&session_id).unwrap();
@@ -217,7 +229,10 @@ impl Client {
         Err(error::Error::ConnectTimeoutError)
     }
 
-    pub fn disconnect(&mut self, client_ses: &ClientSession) -> Result<(), error::Error> {
+    pub fn disconnect(
+        &mut self,
+        client_ses: &ClientSession
+    ) -> Result<(), error::Error> {
 
         let session_id = client_ses.session_id;
 
@@ -245,7 +260,8 @@ impl Client {
         &mut self,
         client_ses: &ClientSession,
         method: &str,
-        params: Vec<json::JsonValue>) -> Result<ClientRequest, error::Error> {
+        params: Vec<json::JsonValue>
+    ) -> Result<ClientRequest, error::Error> {
 
         let session_id = client_ses.session_id;
         let mut ses = self.sessions.get_mut(&session_id).unwrap();
@@ -286,7 +302,11 @@ impl Client {
         })
     }
 
-    fn recv_from_backlog(&mut self, req: &ClientRequest) -> Option<message::Message> {
+    fn recv_from_backlog(
+        &mut self,
+        req: &ClientRequest
+    ) -> Option<message::Message> {
+
         let ses = self.ses_mut(req.session_id);
 
         trace!("recv_from_backlog() tt={}", req.thread_trace);
@@ -305,7 +325,8 @@ impl Client {
     pub fn recv(
         &mut self,
         req: &ClientRequest,
-        mut timeout: i32) -> Result<Option<json::JsonValue>, error::Error> {
+        mut timeout: i32
+    ) -> Result<Option<json::JsonValue>, error::Error> {
 
         let mut resp: Result<Option<json::JsonValue>, error::Error> = Ok(None);
 
