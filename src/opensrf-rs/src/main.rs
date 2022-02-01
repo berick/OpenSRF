@@ -20,6 +20,16 @@ fn main() {
 
     let mut client = Client::new(conf.bus_config()).unwrap();
 
+    let mut ses = client.linked_session("opensrf.settings");
+
+    let params = vec![json::from("Hello"), json::from("World")];
+    let req = ses.request("opensrf.system.echo", params).unwrap();
+
+    let params2 = vec![json::from("Hello"), json::from("World")];
+    let req2 = ses.request("opensrf.system.echo", params2).unwrap();
+
+    /* ------------------ */
+
     let ses = client.session("opensrf.settings");
 
     client.connect(&ses).unwrap();
