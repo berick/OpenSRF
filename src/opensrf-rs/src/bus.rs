@@ -227,8 +227,14 @@ impl Bus {
     }
 
     /// Clears the value for a key.
-    pub fn clear(&mut self, key: &str) -> Result<(), error::Error> {
-        let res: Result<i32, _> = self.connection().del(key);
+    pub fn clear(&mut self, key_op: Option<&str>) -> Result<(), error::Error> {
+
+        let key = match key_op {
+            Some(k) => k.to_string(),
+            None => self.bus_id().to_string(), // mut borrow
+        };
+
+        let res: Result<i32, _> = self.connection().del(&key);
 
         match res {
             Ok(count) => trace!("con.del('{}') returned {}", key, count),

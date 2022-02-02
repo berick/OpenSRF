@@ -6,8 +6,8 @@ use opensrf::message::Payload;
 use opensrf::message::Method;
 use opensrf::message::Message;
 use opensrf::client::Client;
-use opensrf::session::ClientSession;
-use opensrf::session::ClientRequest;
+use opensrf::client::ClientSession;
+use opensrf::client::ClientRequest;
 
 use redis;
 use redis::Commands;
@@ -45,6 +45,26 @@ fn main() {
             Some(value) => println!("REQ1 GOT RESPONSE: {}", value.dump()),
             None => {
                 println!("req1 returned None");
+                break;
+            }
+        }
+    }
+
+    client.disconnect(&ses).unwrap();
+    client.cleanup(&ses);
+
+    let ses = client.session("open-ils.cstore");
+
+    client.connect(&ses).unwrap();
+
+    let params = vec![json::from(1)];
+    let req = client.request(&ses, "open-ils.cstore.direct.actor.user.retrieve", params).unwrap();
+
+    while !client.complete(&req) {
+        match client.recv(&req, 10).unwrap() {
+            Some(value) => println!("REQ2 GOT RESPONSE: {}", value.dump()),
+            None => {
+                println!("req returned None");
                 break;
             }
         }
