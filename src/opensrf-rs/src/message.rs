@@ -1,9 +1,12 @@
 use std::fmt;
+use log::{warn};
+use super::util;
 
 const DEFAULT_LOCALE: &str = "en-US";
 const DEFAULT_TIMEZONE: &str = "America/New_York";
 const DEFAULT_API_LEVEL: u8 = 1;
 const DEFAULT_INGRESS: &str = "opensrf";
+
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum MessageType {
@@ -245,6 +248,8 @@ impl TransportMessage {
             for body in arr {
                 if let Some(b) = Message::from_json_value(&body) {
                     tmsg.body_as_mut().push(b);
+                } else {
+                    warn!("Could not create Message from body: {}", body.dump());
                 }
             }
         }
@@ -356,11 +361,13 @@ impl Message {
         let msg_class = msg_wrapper.class();
         let msg_hash = msg_wrapper.json();
 
-        let thread_trace = match msg_hash["threadTrace"].as_usize() {
-            Some(i) => i,
-            None => { return None; }
+        let thread_trace = match util::json_usize(&msg_hash["threadTrace"]) {
+            Some(tt) => tt,
+            None => {
+                warn!("Message contains invalid threadTrace: {}", msg_hash.dump());
+                return None;
+            }
         };
-
 
         let mtype_str = match msg_hash["type"].as_str() {
             Some(s) => s,
@@ -500,9 +507,12 @@ impl Result {
         let msg_class = msg_wrapper.class();
         let msg_hash = msg_wrapper.json();
 
-        let code = match msg_hash["statusCode"].as_isize() {
-            Some(c) => c,
-            None => { return None; },
+        let code = match util::json_isize(&msg_hash["statusCode"]) {
+            Some(tt) => tt,
+            None => {
+                warn!("Result has invalid status code {}", json_obj.dump());
+                return None;
+            }
         };
 
         let stat: MessageStatus = code.into();
@@ -564,9 +574,12 @@ impl Status {
         let msg_class = msg_wrapper.class();
         let msg_hash = msg_wrapper.json();
 
-        let code = match msg_hash["statusCode"].as_isize() {
-            Some(c) => c,
-            None => { return None; },
+        let code = match util::json_isize(&msg_hash["statusCode"]) {
+            Some(tt) => tt,
+            None => {
+                warn!("Status has invalid status code {}", json_obj.dump());
+                return None;
+            }
         };
 
         let stat: MessageStatus = code.into();

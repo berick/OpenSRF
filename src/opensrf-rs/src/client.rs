@@ -12,9 +12,7 @@ use super::message::MessageStatus;
 use super::message::Method;
 use super::message::Payload;
 use super::session::Request;
-use super::session::ClientRequest;
 use super::session::Session;
-use super::session::ClientSession;
 use super::session::SessionType;
 
 const CONNECT_TIMEOUT: i32 = 10;
@@ -43,8 +41,7 @@ impl Client {
     }
 
     pub fn clear_bus(&mut self) -> Result<(), error::Error> {
-        let bus_id = self.bus.bus_id().to_string(); // XXX
-        self.bus.clear(&bus_id)
+        self.bus.clear(None)
     }
 
     fn ses(&self, thread: &str) -> &Session {
@@ -123,6 +120,8 @@ impl Client {
             trace!("recv_session_from_bus() read thread = {}", tm.thread());
 
             if tm.thread() == thread {
+
+                trace!("recv_session_from_bus() found a response");
 
                 return Ok(Some(tm));
 
@@ -333,6 +332,8 @@ impl Client {
 
             timeout -= start.elapsed().unwrap().as_secs() as i32;
 
+            trace!("{}", tm.to_json_value().dump());
+
             let mut msg_list = tm.body().to_owned();
 
             if msg_list.len() == 0 { continue; }
@@ -374,6 +375,8 @@ impl Client {
         req: &ClientRequest,
         msg: &message::Message
     ) -> Result<Option<json::JsonValue>, error::Error> {
+
+        trace!("handle_reply() {} mtype={}", req, msg.mtype());
 
         if let Payload::Result(resp) = msg.payload() {
             trace!("handle_reply() found response for {}", req);
@@ -426,4 +429,54 @@ impl Client {
     }
 }
 
+// Immutable context structs the caller owns for managing
+// sessions and requests.  These link to mutable variants
+// internally so we don't have to bandy about mutable refs.
+pub struct ClientSession {
+    thread: String,
+}
+
+impl ClientSession {
+    pub fn new(thread: &str) -> Self {
+        ClientSession {
+            thread: thread.to_string(),
+        }
+    }
+    pub fn thread(&self) -> &str {
+        &self.thread
+    }
+}
+
+impl fmt::Display for ClientSession {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "session thread={}", self.thread)
+    }
+}
+
+pub struct ClientRequest {
+    thread: String,
+    thread_trace: usize,
+}
+
+impl ClientRequest {
+    pub fn new(thread: &str, thread_trace: usize) -> Self {
+        ClientRequest {
+            thread_trace,
+            thread: thread.to_string(),
+        }
+    }
+
+    pub fn thread(&self) -> &str {
+        &self.thread
+    }
+    pub fn thread_trace(&self) -> usize {
+        self.thread_trace
+    }
+}
+
+impl fmt::Display for ClientRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "request thread={} thread_trace={}", self.thread, self.thread_trace)
+    }
+}
 

@@ -3,58 +3,8 @@ use std::fmt;
 use log::{trace, warn, error};
 use super::*;
 
-// Immutable context structs the caller owns for managing
-// sessions and requests.  These link to mutable variants
-// internally so we don't have to bandy about mutable refs.
-pub struct ClientSession {
-    thread: String,
-}
+/// Internal, mutable session and request tracking structs
 
-impl ClientSession {
-    pub fn new(thread: &str) -> Self {
-        ClientSession {
-            thread: thread.to_string(),
-        }
-    }
-    pub fn thread(&self) -> &str {
-        &self.thread
-    }
-}
-
-impl fmt::Display for ClientSession {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "session thread={}", self.thread)
-    }
-}
-
-pub struct ClientRequest {
-    thread: String,
-    thread_trace: usize,
-}
-
-impl ClientRequest {
-    pub fn new(thread: &str, thread_trace: usize) -> Self {
-        ClientRequest {
-            thread_trace,
-            thread: thread.to_string(),
-        }
-    }
-
-    pub fn thread(&self) -> &str {
-        &self.thread
-    }
-    pub fn thread_trace(&self) -> usize {
-        self.thread_trace
-    }
-}
-
-impl fmt::Display for ClientRequest {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "request thread={} thread_trace={}", self.thread, self.thread_trace)
-    }
-}
-
-/// Internal mutable request
 pub struct Request {
     pub complete: bool,
     pub thread: String,
@@ -66,7 +16,6 @@ pub enum SessionType {
     Server,
 }
 
-/// Internal mutable session
 pub struct Session {
 
     pub session_type: SessionType,
