@@ -458,7 +458,7 @@ impl<'a> LinkedClientSession<'a> {
         &mut self,
         method: &str,
         params: Vec<json::JsonValue>
-    ) -> Result<LinkedClientRequest<'_, 'a>, error::Error> {
+    ) -> Result<ClientRequest, error::Error> {
 
         let thread = self.thread().to_string();
 
@@ -466,11 +466,10 @@ impl<'a> LinkedClientSession<'a> {
         let mut ses = self.client.sessions.get_mut(&thread).unwrap();
 
         ses.last_thread_trace += 1;
-        let ttrace = ses.last_thread_trace;
 
         let method = Payload::Method(Method::new(method, params));
 
-        let req = Message::new(MessageType::Request, ttrace, method);
+        let req = Message::new(MessageType::Request, ses.last_thread_trace, method);
 
         // If we're not connected, all requets go to the root service address.
         let remote_addr = match ses.connected {
@@ -487,115 +486,16 @@ impl<'a> LinkedClientSession<'a> {
 
         trace!("request() adding request to {}", &thread); // TODO
 
-        ses.requests.insert(ttrace,
+        ses.requests.insert(ses.last_thread_trace,
             Request {
                 complete: false,
                 thread: thread.to_string(),
-                thread_trace: ttrace,
+                thread_trace: ses.last_thread_trace,
             }
         );
 
-        Ok(LinkedClientRequest::new(self, &thread, ttrace))
-    }
-}
-
-pub struct LinkedClientRequest<'a, 'b> {
-    ses: &'a mut LinkedClientSession<'b>,
-    thread: String,
-    thread_trace: usize,
-    complete: bool,
-}
-
-impl<'a, 'b> LinkedClientRequest<'a, 'b> {
-
-    pub fn new(ses: &'a mut LinkedClientSession<'b>, thread: &str, thread_trace: usize) -> Self {
-        LinkedClientRequest {
-            ses,
-            thread_trace,
-            complete: false,
-            thread: thread.to_string(),
-        }
+        Ok(ClientRequest::new(&thread, ses.last_thread_trace))
     }
 
-    pub fn thread(&self) -> &str {
-        &self.thread
-    }
-    pub fn thread_trace(&self) -> usize {
-        self.thread_trace
-    }
-
-    pub fn recv(&mut self, mut timeout: i32
-        ) -> Result<Option<json::JsonValue>, error::Error> {
-
-        let mut resp: Result<Option<json::JsonValue>, error::Error> = Ok(None);
-
-        let thread = self.thread().to_string();
-
-        // XXX
-        let ref req = ClientRequest::new(&thread, self.thread_trace());
-
-        let thread_trace = req.thread_trace();
-
-        if self.ses.client.complete(req) { return resp; }
-
-        trace!("recv() called for {}", req);
-
-        // Reply for this request was previously pulled from the
-        // bus and tossed into our queue.
-        if let Some(msg) = self.ses.client.recv_from_backlog(req) {
-            return self.ses.client.handle_reply(req, &msg);
-        }
-
-        while timeout >= 0 {
-
-            let start = time::SystemTime::now();
-
-            // Could return a response to any request that's linked
-            // to this session.
-            let tm = match self.ses.client.recv_session(&thread, timeout)? {
-                Some(m) => m,
-                None => { return resp; }
-            };
-
-            timeout -= start.elapsed().unwrap().as_secs() as i32;
-
-            let mut msg_list = tm.body().to_owned();
-
-            if msg_list.len() == 0 { continue; }
-
-            let msg = msg_list.remove(0);
-
-            let mut found = false;
-            if msg.thread_trace() == thread_trace {
-
-                found = true;
-                resp = self.ses.client.handle_reply(req, &msg);
-
-            } else {
-
-                /// Pulled a reply to a request made by this client session
-                /// but not matching the requested thread trace.
-
-                trace!("recv() found a reply for a request {}, stashing",
-                    msg.thread_trace());
-
-                let ses = self.ses.client.ses_mut(&thread);
-                ses.backlog.push(msg);
-            }
-
-            while msg_list.len() > 0 {
-                trace!("recv() adding to session backlog thread_trace={}",
-                    msg_list[0].thread_trace());
-
-                let ses = self.ses.client.ses_mut(&thread);
-                ses.backlog.push(msg_list.remove(0));
-            }
-
-            if found { break; }
-        }
-
-        return resp;
-    }
 
 }
-
