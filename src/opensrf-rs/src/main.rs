@@ -23,10 +23,14 @@ fn main() {
     let mut ses = client.linked_session("opensrf.settings");
 
     let params = vec![json::from("Hello"), json::from("World")];
-    let req = ses.request("opensrf.system.echo", params).unwrap();
+    let mut req = ses.request("opensrf.system.echo", params).unwrap();
 
     let params2 = vec![json::from("Hello"), json::from("World")];
-    let req2 = ses.request("opensrf.system.echo", params2).unwrap();
+    let mut req2 = ses.request("opensrf.system.echo", params2).unwrap();
+
+    let first = req2.recv(10).unwrap();
+    let second = req.recv(10).unwrap();
+
 
     /* ------------------ */
 
