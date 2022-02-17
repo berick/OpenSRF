@@ -74,9 +74,9 @@ void osrfSystemIgnoreTransportClient() {
 
 	A thin wrapper for osrfSystemBootstrapClientResc, passing it NULL for a resource.
 */
-int osrf_system_bootstrap_client(const char* config_file, 
-    const char* contextnode, const char* appname, int is_service) {
-	return osrfSystemBootstrapClientResc(config_file, contextnode, appname, is_service);
+
+int osrf_system_bootstrap_client(const char* config_file, const char* contextnode) {
+    return osrf_system_bootstrap_common(config_file, contextnode, "client", 0);
 }
 
 /**
@@ -186,7 +186,7 @@ int osrf_system_service_ctrl(
         const char* action, const char* service) {
     
     // Load the conguration, open the log, open a connection to Jabber
-    if (!osrfSystemBootstrapClientResc(config, context, "client", 0)) {
+    if (!osrf_system_bootstrap_common(config, context, "client", 0)) {
         osrfLogError(OSRF_LOG_MARK,
             "Unable to bootstrap for host %s from configuration file %s",
             hostname, config);
@@ -337,8 +337,13 @@ int osrf_system_service_ctrl(
 	- Open the log.
 	- Open a connection to Jabber.
 */
-int osrfSystemBootstrapClientResc( const char* config_file,
-		const char* contextnode, const char* appname, int is_service ) {
+int osrfSystemBootstrapClientResc(const char* config_file,
+    const char* contextnode, const char* appname) {
+    return osrf_system_bootstrap_common(config_file, contextnode, appname, 0);
+}
+
+int osrf_system_bootstrap_common(const char* config_file,
+		const char* contextnode, const char* appname, int is_service) {
 
 	int failure = 0;
 
