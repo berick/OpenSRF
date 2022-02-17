@@ -19,11 +19,16 @@ extern "C" {
 
 void osrfSystemSetPidFile( const char* name );
 
-int osrf_system_bootstrap_client(const char* config_file, 
+int osrf_system_bootstrap_common(const char* config_file, 
     const char* contextnode, const char* appname, int is_service);
 
-int osrfSystemBootstrapClientResc( const char* config_file,
-		const char* contextnode, const char* appname, int is_service );
+int osrf_system_bootstrap_client(const char* config_file, const char* contextnode);
+
+int osrf_system_bootstrap_service(
+    const char* config_file, const char* contextnode, const char* appname);
+
+int osrfSystemBootstrapClientResc(const char* config_file, 
+    const char* contextnode, const char* appname);
 
 int osrfSystemBootstrap( const char* hostname, const char* configfile,
 		const char* contextNode );
