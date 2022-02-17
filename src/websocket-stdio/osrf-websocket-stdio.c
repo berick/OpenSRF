@@ -266,7 +266,7 @@ static void child_init(int argc, char* argv[]) {
         config_file = argv[1];
     }
 
-    if (!osrf_system_bootstrap_client(config_file, config_ctxt, "websocket", 0) ) {
+    if (!osrf_system_bootstrap_common(config_file, config_ctxt, "websocket", 0) ) {
         fprintf(stderr, "Cannot boostrap OSRF\n");
         shut_it_down(1);
     }
