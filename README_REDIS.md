@@ -14,7 +14,7 @@ sudo apt install redis-server libredis-perl libhiredis-dev
 * Simplicity
   * installation
   * no account management
-  * conception movement of data.
+  * conceptual movement of data.
 * No more Ejabberd (yes please!)
   * Resolves https://bugs.launchpad.net/opensrf/+bug/1703411 
   * Probably resolves other stuff
@@ -40,7 +40,7 @@ sudo apt install redis-server libredis-perl libhiredis-dev
     would just manages child procs.  In addition to more speed, would
     resolve situations where Listeners choke cramming large messages
     down their pipe-to-child.
-* Listeners could still listen for command messages
+* Listeners could still listen for command/broadcast messages
   * Shutdown, reload, dynamically raise max children, etc.
   * Requests for data, e.g. drone stats (similar to router info messages)
 * OpenSRF request "backlog" no longer required.  Unprocessed requests
@@ -80,4 +80,7 @@ sudo apt install redis-server libredis-perl libhiredis-dev
 * Redis supports expiration of values (similar to memcache) but expire
   times are not reset on list value modifications (lpush, lpop, etc.),
   so would not help with message queues.
+  * Add timestamps to messages so we can sweep them?
+  * Regularly delete empty queues to reset their timeout paired with
+    a long expiration timeout on queues.  (e.g. days).
 
