@@ -12,7 +12,7 @@ use Time::HiRes qw/time/;
 # hitting opensrf.settings with lots of requests lead to failures.
 my $test_service = "open-ils.storage";
 
-my $iterations = 50;
+my $iterations = 100;
 
 my $small_echo_data = <<TEXT;
     1237012938471029348170197908709870987098709870987098709809870987098709870
@@ -46,7 +46,7 @@ sub echoloop {
     }
 
     my $dur = time - $start;
-    print sprintf("\tEcho Connected=$connected Size=%d\tDuration: %0.5f\n", length($data), $dur);
+    print sprintf("\tEcho Connected=$connected Size=%d\tDuration: %0.3f\n", length($data), $dur);
 }
 
 echoloop($small_echo_data);
