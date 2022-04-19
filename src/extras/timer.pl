@@ -14,7 +14,11 @@ my $test_service = "open-ils.storage";
 
 my $iterations = 50;
 
-my $small_echo_data = '123701293847102934817019';
+my $small_echo_data = <<TEXT;
+    1237012938471029348170197908709870987098709870987098709809870987098709870
+    1237012938471029348170197908709870987098709870987098709809870987098709870
+TEXT
+
 my $large_echo_data = join('', <DATA>);
 
 my $osrf_config = '/openils/conf/opensrf_core.xml';
@@ -48,12 +52,16 @@ echoloop($large_echo_data);
 
 # Connected sessions
 
-print "\nTesting Connected Session\n\n";
+print "\nTesting Connected Session Small Data\n\n";
 my $ses = OpenSRF::AppSession->create($test_service);
 $ses->connect;
 echoloop($small_echo_data, $ses);
 $ses->disconnect;
 
+print "\nTesting Connected Session Big Data\n\n";
+$ses->connect;
+echoloop($large_echo_data, $ses);
+$ses->disconnect;
 
 __DATA__
 asodifuyasoidufyasoidfuyasodfiuyasdofiuaysdofiuaysdfoiasuyfaosidufyasdoifyasoi
