@@ -20,6 +20,7 @@ my $small_echo_data = <<TEXT;
 TEXT
 
 my $large_echo_data = join('', <DATA>);
+my $med_echo_data = substr($large_echo_data, length($large_echo_data) / 2);
 
 my $osrf_config = '/openils/conf/opensrf_core.xml';
 my $ops = GetOptions(
@@ -31,6 +32,7 @@ OpenSRF::System->bootstrap_client(config_file => $osrf_config);
 sub echoloop {
     my $data = shift;
     my $ses = shift || OpenSRF::AppSession->create($test_service);
+    my $connected = shift || 0;
 
     my $start = time;
     for (0..$iterations) {
@@ -44,23 +46,27 @@ sub echoloop {
     }
 
     my $dur = time - $start;
-    print sprintf("\n\nEcho Size=%d Duration: %0.5f\n\n", length($data), $dur);
+    print sprintf("\tEcho Connected=$connected Size=%d\tDuration: %0.5f\n", length($data), $dur);
 }
 
 echoloop($small_echo_data);
+echoloop($med_echo_data);
 echoloop($large_echo_data);
 
 # Connected sessions
 
-print "\nTesting Connected Session Small Data\n\n";
 my $ses = OpenSRF::AppSession->create($test_service);
+
 $ses->connect;
-echoloop($small_echo_data, $ses);
+echoloop($small_echo_data, $ses, 1);
 $ses->disconnect;
 
-print "\nTesting Connected Session Big Data\n\n";
 $ses->connect;
-echoloop($large_echo_data, $ses);
+echoloop($med_echo_data, $ses, 1);
+$ses->disconnect;
+
+$ses->connect;
+echoloop($large_echo_data, $ses, 1);
 $ses->disconnect;
 
 __DATA__
