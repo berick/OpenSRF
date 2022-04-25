@@ -65,6 +65,7 @@ my $opt_ignore_orphans = 0;
 my $sclient;
 my @perl_services;
 my @nonperl_services;
+my @public_services;
 my %max_children_map;
 my $hostname = $ENV{OSRF_HOSTNAME} || hostfqdn();
 my $service_key;
@@ -329,6 +330,7 @@ sub do_init {
     my $sclient = OpenSRF::Utils::SettingsClient->new;
     my $apps = $sclient->config_value("activeapps", "appname");
     $service_key = $sclient->config_value('service_key') || '';
+    @public_services = @{ $sclient->config_value(public_services => 'service') || [] };;
 
     # disconnect the top-level network handle
     OpenSRF::Transport::PeerHandle->retrieve->disconnect;
@@ -392,7 +394,10 @@ sub do_start {
 
     load_settings() if $service eq 'opensrf.settings';
 
-    $pub = ($sclient->config_value(apps => $service => 'public') || '') eq 'true';
+    my $pub = grep { $_ eq $service } @public_services;
+
+    # XXX debugging
+    msg("Starting service $service public=$pub");
 
     if(grep { $_ eq $service } @perl_services) {
         return unless do_daemon($service);
