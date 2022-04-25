@@ -741,6 +741,8 @@ sub run {
             OpenSRF::Transport::Redis::Message->new(json => $data)
         );
 
+        last unless $session;
+
         my $recycle = $self->keepalive_loop($session);
 
         last if ++$self->{num_requests} == $self->{parent}->{max_requests};

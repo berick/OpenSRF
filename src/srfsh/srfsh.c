@@ -122,6 +122,8 @@ int main( int argc, char* argv[] ) {
 		return -1;
 	}
 
+    osrfSystemSetServiceKey(getenv("OSRF_SERVICE_KEY"));
+
 	if(argc > 1) {
 		int f;
 		int i;

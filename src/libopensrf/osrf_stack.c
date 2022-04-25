@@ -101,19 +101,6 @@ struct osrf_app_session_struct* osrf_stack_transport_handler( transport_message*
 		return NULL;
 	}
 
-    if (!osrfSystemGetIsPublic()) {
-        const char* skey = osrfSystemGetServiceKey();
-        const char* key = msg->service_key;
-
-        if (!skey || !key || strcmp(skey, key) != 0) {
-            osrfLogWarning(OSRF_LOG_MARK, "Discarding message to private "
-                "service which does not have the correct service key");
-            return NULL;
-        }
-
-        osrfLogInternal(OSRF_LOG_MARK, "Connectiong to private service granted");
-    }
-
 	osrfAppSession* session = osrf_app_session_find_session( msg->thread );
 
 	if( !session && my_service )
@@ -128,6 +115,24 @@ struct osrf_app_session_struct* osrf_stack_transport_handler( transport_message*
 		osrfLogDebug( OSRF_LOG_MARK, "Session [%s] found or built", session->session_id );
 
 	osrf_app_session_set_remote( session, msg->sender );
+
+    if (session->type == OSRF_SESSION_SERVER && !osrfSystemGetIsPublic()) {
+        const char* skey = osrfSystemGetServiceKey();
+        const char* key = msg->service_key;
+
+        if (!skey || !key || strcmp(skey, key) != 0) {
+            osrfLogWarning(OSRF_LOG_MARK, "Discarding message to private "
+                "service which does not have the correct service key");
+
+			osrfAppSessionStatus(session, OSRF_STATUS_FORBIDDEN,
+                "osrfPrivateConnectStatus", 0, "Private Service Access Denied" );
+
+            return NULL;
+        }
+
+        osrfLogInternal(OSRF_LOG_MARK, "Connectiong to private service granted");
+    }
+
 	osrfMessage* arr[OSRF_MAX_MSGS_PER_PACKET];
 
 	/* Convert the message body into one or more osrfMessages */

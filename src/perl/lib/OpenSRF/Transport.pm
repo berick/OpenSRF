@@ -55,19 +55,6 @@ sub handler {
 
 	$logger->set_osrf_xid($data->osrf_xid);
 
-
-    if (!OpenSRF::System->get_is_public()) {
-        my $client_key = $data->service_key;
-        my $local_key  = OpenSRF::System->get_service_key();
-
-        if ($local_key && $client_key && $local_key eq $client_key) {
-            $logger->internal("Caller provided the correct service key");
-        } else {
-            $logger->warn("Caller failed to provide correct service key");
-            return 1;
-        }
-    }
-
 	if (defined($type) and $type eq 'error') {
 		throw OpenSRF::EX::Session ("$remote_id IS NOT CONNECTED TO THE NETWORK!!!");
 
@@ -99,6 +86,23 @@ sub handler {
 	if( ! $app_session ) {
 		throw OpenSRF::EX::Session ("Transport::handler(): No AppSession object returned from server_build()");
 	}
+
+    if ($app_session->endpoint == $app_session->SERVER() && !OpenSRF::System->get_is_public()) {
+        my $client_key = $data->service_key;
+        my $local_key  = OpenSRF::System->get_service_key();
+
+        if ($local_key && $client_key && $local_key eq $client_key) {
+            $logger->internal("Caller provided the correct service key");
+        } else {
+            $logger->warn("Caller failed to provide correct service key");
+
+            my $res = OpenSRF::DomainObject::oilsConnectException->new;
+            $app_session->status($res);
+            $app_session->kill_me;
+
+            return undef;
+        }
+    }
 
 	# Create a document from the JSON contained within the message 
 	my $doc; 
