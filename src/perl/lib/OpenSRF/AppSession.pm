@@ -580,15 +580,18 @@ sub send {
 
 	} 
 
-    # TODO Redis
-    # We can remove this extra layer of JSON round-tripping on the body.
 	my $json = OpenSRF::Utils::JSON->perl2JSON(\@doc);
 	$logger->internal("AppSession sending doc: $json");
 
-	$self->{peer_handle}->send( 
-					to     => $self->remote_id,
-				   thread => $self->session_id,
-				   body   => $json );
+    # Only include the service key in outbound client messages.
+    my $skey = $self->endpoint == CLIENT ? OpenSRF::System->get_service_key() : '';
+
+    $self->{peer_handle}->send( 
+        to     => $self->remote_id,
+        thread => $self->session_id,
+        body   => $json,
+        service_key => $skey
+    );
 
 	if( $disconnect) {
 		$self->state( DISCONNECTED );

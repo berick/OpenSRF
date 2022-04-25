@@ -66,7 +66,7 @@ int main( int argc, char* argv[] ) {
 
     if (!(host && config && context && piddir && action)) {
 		fprintf(stderr, "Usage: %s -h <host> -c <config> "
-            "-x <config_context> -p <piddir>\n", argv[0]);
+            "-x <config_context> -p <piddir> -k <service_key>\n", argv[0]);
 		return 1;
 	}
 
@@ -98,6 +98,7 @@ int main( int argc, char* argv[] ) {
     free(piddir);
     free(action);
     if (service) free(service);
+    if (service_key) free(service_key);
 
 	return ret;
 }

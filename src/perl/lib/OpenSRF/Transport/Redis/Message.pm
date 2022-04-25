@@ -18,6 +18,7 @@ sub new {
         $self->{thread} = $args{thread} || '';
         $self->{body} = $args{body} || '';
         $self->{osrf_xid} = $args{osrf_xid} || '';
+        $self->{service_key} = $args{service_key} || '';
     }
 
     return $self;
@@ -64,6 +65,12 @@ sub osrf_xid {
     return $self->{osrf_xid};
 }
 
+sub service_key {
+    my($self, $service_key) = @_;
+    $self->{service_key} = $service_key if defined $service_key;
+    return $self->{service_key};
+}
+
 sub to_json {
     my $self = shift;
 
@@ -71,6 +78,7 @@ sub to_json {
         to => $self->{to},
         from => $self->{from},
         osrf_xid => $self->{osrf_xid},
+        service_key => $self->{service_key},
         thread => $self->{thread},
         body => $self->{body}
     });

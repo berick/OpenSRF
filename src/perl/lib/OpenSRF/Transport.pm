@@ -56,6 +56,18 @@ sub handler {
 	$logger->set_osrf_xid($data->osrf_xid);
 
 
+    if (!OpenSRF::System->get_is_public()) {
+        my $client_key = $data->service_key;
+        my $local_key  = OpenSRF::System->get_service_key();
+
+        if ($local_key && $client_key && $local_key eq $client_key) {
+            $logger->internal("Caller provided the correct service key");
+        } else {
+            $logger->warn("Caller failed to provide correct service key");
+            return 1;
+        }
+    }
+
 	if (defined($type) and $type eq 'error') {
 		throw OpenSRF::EX::Session ("$remote_id IS NOT CONNECTED TO THE NETWORK!!!");
 

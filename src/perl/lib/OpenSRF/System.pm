@@ -20,6 +20,9 @@ sub import {
     $bootstrap_config_file = $config;
 }
 
+my $is_public = 0;
+my $service_key = '';
+
 $| = 1;
 
 sub DESTROY {}
@@ -78,8 +81,19 @@ sub connected {
     return 0;
 }
 
+sub get_is_public {
+    return $is_public;
+}
+
+sub get_service_key {
+    return $service_key;
+}
+
 sub run_service {
-    my($class, $service, $pid_dir) = @_;
+    my($class, $service, $pid_dir, $pub, $skey) = @_;
+
+    $is_public = $pub || 0;
+    $service_key = $skey || '';
 
     $0 = "OpenSRF Listener [$service]";
 
