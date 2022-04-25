@@ -24,13 +24,15 @@ int main( int argc, char* argv[] ) {
     char* piddir  = NULL;
     char* action  = NULL;
     char* service = NULL;
+    int   is_public = 0;
+    char* service_key = NULL;
     opterr = 0;
 
 	/* values must be strdup'ed because init_proc_title / 
      * set_proc_title are evil and overwrite the argv memory */
 
     int c;
-    while ((c = getopt(argc, argv, "h:c:x:p:a:s:")) != -1) {
+    while ((c = getopt(argc, argv, "h:c:x:p:a:s:k:u")) != -1) {
         switch (c) {
             case 'h':
                 host = strdup(optarg);
@@ -49,6 +51,12 @@ int main( int argc, char* argv[] ) {
                 break;
             case 's':
                 service = strdup(optarg);
+                break;
+            case 'k':
+                service_key = strdup(optarg);
+                break;
+            case 'u':
+                is_public = 1;
                 break;
             default:
                 continue;
@@ -71,8 +79,10 @@ int main( int argc, char* argv[] ) {
         service = NULL;
     }
 
+    osrfSystemSetServiceKey(service_key);
+
     int ret = osrf_system_service_ctrl(
-        host, config, context, piddir, action, service);
+        host, config, context, piddir, action, service, is_public);
 
 	if (ret != 0) {
 		osrfLogError(

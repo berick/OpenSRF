@@ -101,6 +101,19 @@ struct osrf_app_session_struct* osrf_stack_transport_handler( transport_message*
 		return NULL;
 	}
 
+    if (!osrfSystemGetIsPublic()) {
+        const char* skey = osrfSystemGetServiceKey();
+        const char* key = msg->service_key;
+
+        if (!skey || !key || strcmp(skey, key) != 0) {
+            osrfLogWarning(OSRF_LOG_MARK, "Discarding message to private "
+                "service which does not have the correct service key");
+            return NULL;
+        }
+
+        osrfLogInternal(OSRF_LOG_MARK, "Connectiong to private service granted");
+    }
+
 	osrfAppSession* session = osrf_app_session_find_session( msg->thread );
 
 	if( !session && my_service )

@@ -36,6 +36,11 @@ static char* get_pid_file(const char* path, const char* service);
 
 static int stop_service(const char* path, const char* service);
 
+// True if we are hosting a public service.
+static int service_is_public = 0;
+
+static char* service_key = NULL;
+
 /**
 	@brief Return a pointer to the global transport_client.
 	@return Pointer to the global transport_client, or NULL.
@@ -163,6 +168,20 @@ static int stop_service(const char* piddir, const char* service) {
     return 0;
 }
 
+int osrfSystemGetIsPublic() {
+    return service_is_public;
+}
+
+void osrfSystemSetServiceKey(const char* key) {
+    if (service_key) free(service_key);
+
+    service_key = key ? strdup(key) : NULL;
+}
+
+const char* osrfSystemGetServiceKey() {
+    return service_key;
+}
+
 /**
 	@brief Launch one or more opensrf services
 	@param hostname Full network name of the host where the process is 
@@ -183,7 +202,9 @@ static int stop_service(const char* piddir, const char* service) {
 int osrf_system_service_ctrl(  
         const char* hostname, const char* config, 
         const char* context, const char* piddir, 
-        const char* action, const char* service) {
+        const char* action, const char* service, int is_public) {
+
+    service_is_public = is_public;
     
     // Load the conguration, open the log, open a connection to Jabber
     if (!osrf_system_bootstrap_common(config, context, "client", 0)) {

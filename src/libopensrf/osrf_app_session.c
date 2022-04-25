@@ -1171,6 +1171,14 @@ int osrfSendChunkedResult(
 int osrfSendTransportPayload( osrfAppSession* session, const char* payload ) {
 	transport_message* t_msg = message_init(
 		payload, "", session->session_id, session->remote_id, NULL );
+
+
+	if (session->type == OSRF_SESSION_CLIENT) {
+        // Only set the service key on clients so the key is not 
+        // leaked from the server to a client.
+        message_set_service_key(t_msg, osrfSystemGetServiceKey());
+    }
+
 	message_set_osrf_xid( t_msg, osrfLogGetXid() );
 
 	int retval = client_send_message( session->transport_handle, t_msg );

@@ -69,6 +69,7 @@ transport_message* message_init( const char* body, const char* subject,
 	msg->msg_xml        = NULL;
     msg->msg_json       = NULL;
 	msg->next           = NULL;
+    msg->service_key    = NULL;
 
 	return msg;
 }
@@ -95,6 +96,7 @@ transport_message* new_message_from_json(const char* msg_json) {
     new_msg->broadcast      = 0;
     new_msg->msg_xml        = NULL;
     new_msg->next           = NULL;
+    new_msg->service_key    = NULL;
 
     jsonObject* json_hash = jsonParse(msg_json);
 
@@ -117,6 +119,9 @@ transport_message* new_message_from_json(const char* msg_json) {
 
     const char* osrf_xid = jsonObjectGetString(jsonObjectGetKeyConst(json_hash, "osrf_xid"));
     if (osrf_xid) { message_set_osrf_xid(new_msg, (char*) osrf_xid); }
+
+    const char* service_key = jsonObjectGetString(jsonObjectGetKeyConst(json_hash, "service_key"));
+    if (service_key) { message_set_service_key(new_msg, (char*) service_key); }
 
     // TODO
     // Internally the mesage body is stored as a JSON string
@@ -188,6 +193,7 @@ transport_message* new_message_from_xml( const char* msg_xml ) {
 	xmlChar* router_command = NULL;
 	xmlChar* broadcast      = NULL;
 	xmlChar* osrf_xid       = NULL;
+    xmlChar* service_key    = NULL;
 
 	if( sender ) {
 		new_msg->sender = strdup((const char*)sender);
@@ -231,10 +237,16 @@ transport_message* new_message_from_xml( const char* msg_xml ) {
 			router_command = xmlGetProp( search_node, BAD_CAST "router_command" );
 			broadcast      = xmlGetProp( search_node, BAD_CAST "broadcast" );
 			osrf_xid       = xmlGetProp( search_node, BAD_CAST "osrf_xid" );
+			service_key    = xmlGetProp( search_node, BAD_CAST "service_key" );
 
 			if( osrf_xid ) {
 				message_set_osrf_xid( new_msg, (char*) osrf_xid);
 				xmlFree(osrf_xid);
+			}
+
+			if (service_key) {
+				message_set_service_key(new_msg, (char*) service_key);
+				xmlFree(service_key);
 			}
 
 			if( router_from ) {
@@ -310,6 +322,14 @@ void message_set_osrf_xid( transport_message* msg, const char* osrf_xid ) {
 	}
 }
 
+
+void message_set_service_key(transport_message* msg, const char* key) {
+    if (msg) {
+        if (msg->service_key) { free(msg->service_key); }
+        msg->service_key = key ? strdup(key) : NULL;
+    }
+}
+
 /**
 	@brief Populate some OSRF extensions to XMPP in a transport_message.
 	@param msg Pointer to the transport_message to be populated.
@@ -368,6 +388,7 @@ int message_free( transport_message* msg ){
 	free(msg->router_class);
 	free(msg->router_command);
 	free(msg->osrf_xid);
+	if (msg->service_key != NULL) free(msg->service_key);
 	if( msg->error_type != NULL ) free(msg->error_type);
 	if( msg->msg_xml != NULL ) free(msg->msg_xml);
 	if( msg->msg_json != NULL ) free(msg->msg_json);
@@ -386,6 +407,7 @@ int message_prepare_json(transport_message* msg) {
     jsonObjectSetKey(json_hash, "from", jsonNewObject(msg->sender));
     jsonObjectSetKey(json_hash, "thread", jsonNewObject(msg->thread));
     jsonObjectSetKey(json_hash, "osrf_xid", jsonNewObject(msg->osrf_xid));
+    jsonObjectSetKey(json_hash, "service_key", jsonNewObject(msg->service_key));
 
     // TODO the various layers expect the message body to be a separate
     // JSON string, but on the bus, the body is just another key 
@@ -454,6 +476,7 @@ int message_prepare_xml( transport_message* msg ) {
 	xmlNewProp( opensrf_node, BAD_CAST "router_class", BAD_CAST msg->router_class );
 	xmlNewProp( opensrf_node, BAD_CAST "router_command", BAD_CAST msg->router_command );
 	xmlNewProp( opensrf_node, BAD_CAST "osrf_xid", BAD_CAST msg->osrf_xid );
+	xmlNewProp( opensrf_node, BAD_CAST "service_key", BAD_CAST msg->service_key );
 
 	xmlAddChild(message_node, opensrf_node);
 

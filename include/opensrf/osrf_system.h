@@ -36,9 +36,14 @@ int osrfSystemBootstrap( const char* hostname, const char* configfile,
 int osrf_system_service_ctrl(
     const char* host,    const char* config,
     const char* context, const char* piddir, 
-    const char* action,  const char* service);
+    const char* action,  const char* service, int is_public);
 
 transport_client* osrfSystemGetTransportClient( void );
+
+int osrfSystemGetIsPublic();
+
+void osrfSystemSetServiceKey(const char*);
+const char* osrfSystemGetServiceKey();
 
 int osrf_system_disconnect_client();
 

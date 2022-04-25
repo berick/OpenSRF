@@ -55,6 +55,7 @@ struct transport_message_struct {
 	int broadcast;         /**< Value of the "broadcast" attribute in the message element. */
 	char* msg_xml;         /**< The entire message as XML, complete with entity encoding. */
 	char* msg_json;         /**< The entire message as JSON*/
+    char* service_key;
 	struct transport_message_struct* next;
 };
 typedef struct transport_message_struct transport_message;
@@ -70,6 +71,7 @@ void message_set_router_info( transport_message* msg, const char* router_from,
 		int broadcast_enabled );
 
 void message_set_osrf_xid( transport_message* msg, const char* osrf_xid );
+void message_set_osrf_service_key( transport_message* msg, const char* key );
 
 int message_prepare_xml( transport_message* msg );
 int message_prepare_json( transport_message* msg );
