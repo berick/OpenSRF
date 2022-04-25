@@ -52,9 +52,6 @@ int main( int argc, char* argv[] ) {
             case 's':
                 service = strdup(optarg);
                 break;
-            case 'k':
-                service_key = strdup(optarg);
-                break;
             case 'u':
                 is_public = 1;
                 break;
@@ -66,7 +63,7 @@ int main( int argc, char* argv[] ) {
 
     if (!(host && config && context && piddir && action)) {
 		fprintf(stderr, "Usage: %s -h <host> -c <config> "
-            "-x <config_context> -p <piddir> -k <service_key>\n", argv[0]);
+            "-x <config_context> -p <piddir>\n", argv[0]);
 		return 1;
 	}
 
@@ -79,7 +76,7 @@ int main( int argc, char* argv[] ) {
         service = NULL;
     }
 
-    osrfSystemSetServiceKey(service_key);
+    osrfSystemSetServiceKey(getenv("OSRF_SERVICE_KEY"));
 
     int ret = osrf_system_service_ctrl(
         host, config, context, piddir, action, service, is_public);

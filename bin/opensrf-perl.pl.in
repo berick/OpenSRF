@@ -68,7 +68,6 @@ my @nonperl_services;
 my @public_services;
 my %max_children_map;
 my $hostname = $ENV{OSRF_HOSTNAME} || hostfqdn();
-my $service_key;
 
 GetOptions(
     'service=s' => \$opt_service,
@@ -329,7 +328,6 @@ sub do_init {
 
     my $sclient = OpenSRF::Utils::SettingsClient->new;
     my $apps = $sclient->config_value("activeapps", "appname");
-    $service_key = $sclient->config_value('service_key') || '';
     @public_services = @{ $sclient->config_value(public_services => 'service') || [] };;
 
     # disconnect the top-level network handle
@@ -401,7 +399,7 @@ sub do_start {
 
     if(grep { $_ eq $service } @perl_services) {
         return unless do_daemon($service);
-        OpenSRF::System->run_service($service, $opt_pid_dir, $pub, $service_key);
+        OpenSRF::System->run_service($service, $opt_pid_dir, $pub);
 
     } else {
         # note: we don't daemonize non-perl services, but instead
@@ -410,7 +408,7 @@ sub do_start {
         if ($svc) {
             if ($svc->{lang} =~ /c/i) {
                 my $p = $pub ? ' -u' : '';
-                system("$C_COMMAND -a start -s $service -k $service_key $p");
+                system("$C_COMMAND -a start -s $service $p");
                 return;
             }
         }

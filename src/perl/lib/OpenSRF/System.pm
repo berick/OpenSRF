@@ -90,10 +90,10 @@ sub get_service_key {
 }
 
 sub run_service {
-    my($class, $service, $pid_dir, $pub, $skey) = @_;
+    my ($class, $service, $pid_dir, $pub) = @_;
 
     $is_public = $pub || 0;
-    $service_key = $skey || '';
+    $service_key = $ENV{OSRF_SERVICE_KEY} || '';
 
     $0 = "OpenSRF Listener [$service]";
 
