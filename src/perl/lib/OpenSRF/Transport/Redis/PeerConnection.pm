@@ -37,7 +37,11 @@ sub new {
     my $host = '127.0.0.1';
     my $sock = $conf->bootstrap->sock;
 
-    my $bus_id = "$app-" . substr(md5_hex($$ . time . rand($$)), 0, 12);
+    # Normalize bus ID
+    $app =~ s/-/_/g;
+    $app =~ s/\./:/g;
+
+    my $bus_id = "$app:" . substr(md5_hex($$ . time . rand($$)), 0, 12);
 
     $logger->debug("PeerConnection::new() using bus id: $bus_id");
 

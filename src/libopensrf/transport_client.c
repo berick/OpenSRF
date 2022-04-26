@@ -55,6 +55,28 @@ int client_connect_as_service(transport_client* client, const char* appname) {
     return client_connect_with_bus_id(client);
 }
 
+// 
+// Replace "-" with "_".
+// Replace "." with ":".
+//
+// Returned string must be freed.
+static char* normalize_bus_id(const char* bus_id) {
+
+    char* new_bus_id = strdup(bus_id);
+    size_t len = strlen(new_bus_id);
+
+    for (size_t idx = 0; idx < len; idx++) {
+        char c = new_bus_id[idx];
+        if (c == '-') {
+            new_bus_id[idx] = '_';
+        } else if (c == '.') {
+            new_bus_id[idx] = ':';
+        }
+    }
+
+    return new_bus_id;
+}
+
 int client_connect(transport_client* client, const char* appname) {
 	if (client == NULL || appname == NULL) { return 0; }
 
@@ -63,13 +85,15 @@ int client_connect(transport_client* client, const char* appname) {
         "%f.%d%ld", get_timestamp_millis(), (int) time(NULL), (long) getpid());
 
     char* md5 = md5sum(junk);
+    char* norm_appname = normalize_bus_id(appname);
 
-    size_t len = 14 + strlen(appname);
+    size_t len = 14 + strlen(norm_appname);
     char bus_id[len];
-    snprintf(bus_id, len, "%s-%s", appname, md5);
+    snprintf(bus_id, len, "%s:%s", norm_appname, md5);
 
 	client->bus_id = strdup(bus_id);
     free(md5);
+    free(norm_appname);
 
     return client_connect_with_bus_id(client);
 }
