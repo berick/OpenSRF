@@ -66,7 +66,7 @@ int client_connect(transport_client* client, const char* appname) {
 
     size_t len = 14 + strlen(appname);
     char bus_id[len];
-    snprintf(bus_id, len, "%s-%s", appname, md5);
+    snprintf(bus_id, len, "%s:%s", appname, md5);
 
 	client->bus_id = strdup(bus_id);
     free(md5);
