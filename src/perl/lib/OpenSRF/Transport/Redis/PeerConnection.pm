@@ -30,18 +30,28 @@ sub new {
     die "No suitable config found for PeerConnection\n" unless $config;
 
     my $conf = OpenSRF::Utils::Config->current;
-    # TODO
-    #my $port = $conf->bootstrap->port || 6379;
-    my $port = 6379;
-    #my $host = $conf->bootstrap->host || '127.0.0.1';
-    my $host = '127.0.0.1';
-    my $sock = $conf->bootstrap->sock;
 
-    my $bus_id = "$app:" . substr(md5_hex($$ . time . rand($$)), 0, 12);
+    my $domain  = $conf->bootstrap->domain   || '';
+    my $host    = $conf->bootstrap->host     || '127.0.0.1';
+    my $user    = $conf->bootstrap->username || 'opensrf';
+    my $pass    = $conf->bootstrap->passwd;
+    my $port    = $conf->bootstrap->port     || 6379;
+    my $sock    = $conf->bootstrap->sock;
+
+    if ($domain =~ /^private/) {
+        $domain = 'private';
+    } else {
+        $domain = 'public';
+    }
+
+    my $bus_id = "$app:" . substr(md5_hex($$ . time . rand($$)), 0, 16);
 
     $logger->debug("PeerConnection::new() using bus id: $bus_id");
 
     my $self = $class->SUPER::new(
+        domain => $domain,
+        username => $user,
+        password => $pass,
         host => $host,
         port => $port,
         sock => $sock,

@@ -64,7 +64,8 @@ int client_connect(transport_client* client, const char* appname) {
 
     char* md5 = md5sum(junk);
 
-    size_t len = 14 + strlen(appname);
+    // Random bit is 16 chars
+    size_t len = 18 + strlen(appname);
     char bus_id[len];
     snprintf(bus_id, len, "%s:%s", appname, md5);
 
