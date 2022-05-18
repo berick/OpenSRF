@@ -38,19 +38,21 @@ sub new {
     my $port    = $conf->bootstrap->port     || 6379;
     my $sock    = $conf->bootstrap->sock;
 
-    if ($domain =~ /^private/) {
-        $domain = 'private';
-    } else {
-        $domain = 'public';
-    }
+    # Bus ID is our address on the bus -- how people talk to us.
+    my $bus_id = "client:$app:" . substr(md5_hex($$ . time . rand($$)), 0, 16);
 
-    my $bus_id = "$app:" . substr(md5_hex($$ . time . rand($$)), 0, 16);
+    # Regex here so we can accommodate e.g. private.localhost
+    # Over time, "domain" should be either "private" or "public"
+    $domain = ($domain =~ /^private/) ? 'private' : 'public';
 
-    $logger->debug("PeerConnection::new() using bus id: $bus_id");
+    # How I authenticate
+    my $username = "$user\@$domain";
+
+    $logger->info("PeerConnection::new() bus_id=$bus_id username=$username");
 
     my $self = $class->SUPER::new(
-        domain => $domain,
-        username => $user,
+        # Username is how we login to the Bus.
+        username => $username,
         password => $pass,
         host => $host,
         port => $port,

@@ -12,6 +12,7 @@ sub new {
     my ($class, %params) = @_;
     my $self = bless({}, ref($class) || $class);
     $self->params(\%params);
+    $logger->info("NEW CLIENT " . OpenSRF::Utils::JSON->perl2JSON(\%params));
     return $self;
 }
 
@@ -83,12 +84,12 @@ sub initialize {
     my $sock = $self->params->{sock}; 
     my $bus_id = $self->params->{bus_id};
 
-    my ($package, $filename, $line) = caller;
-    $logger->debug("Redis client connecting with bus_id $bus_id : $filename : $line");
-
-    my $conf = OpenSRF::Utils::Config->current;
+    my $username = $self->params->{username}; 
+    my $password = $self->params->{password}; 
 
     return 1 if $self->redis;
+
+    $logger->debug("Redis client connecting with bus_id $bus_id");
 
     # UNIX socket file takes precedence over host:port.
     my @connect_args = $sock ? (sock => $sock) : (server => "$host:$port");
@@ -96,10 +97,21 @@ sub initialize {
     # On disconnect, try to reconnect every 100ms up to 60 seconds.
     push(@connect_args, (reconnect => 60, every => 100_000));
 
-    $logger->debug("Connecting to bus: @connect_args");
+    $logger->info("Connecting to bus: @connect_args");
 
     unless ($self->redis(Redis->new(@connect_args))) {
         throw OpenSRF::EX::Jabber("Could not connect to Redis bus with @connect_args");
+        return 0;
+    }
+
+    $logger->info("Logging in with username: $username");
+    $logger->info("Logging in with password: $password");
+
+    eval { $self->redis->auth($username, $password) };
+
+    if ($@) {
+        throw OpenSRF::EX::Jabber(
+            "Could not authenticate with Redis: username=$username: $@");
         return 0;
     }
 

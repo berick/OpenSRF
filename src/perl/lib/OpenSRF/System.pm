@@ -84,7 +84,7 @@ sub run_service {
     $0 = "OpenSRF Listener [$service]";
 
     # temp connection to use for application initialization
-    OpenSRF::System->bootstrap_client(client_name => "system_client");
+    OpenSRF::System->bootstrap_client(client_name => $service);
 
     my $sclient = OpenSRF::Utils::SettingsClient->new;
     my $getval = sub { $sclient->config_value(apps => $service => @_); };

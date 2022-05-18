@@ -26,6 +26,34 @@ my $logger = "OpenSRF::Utils::Logger";
 my $_last_locale = 'en-US';
 our $current_ingress = 'opensrf';
 
+# Utility function for checking if a service is public or private.
+# Returns true if a services is registered with a "public" router.
+sub service_is_public {
+	my ($class, $service) = @_;
+
+	my $conf = OpenSRF::Utils::Config->current;
+
+    my $routers = $conf->bootstrap->routers;
+
+	return 0 unless $routers && @$routers;
+
+    # Assume a service is private unless it appears in the <services/>
+    # block for a router on the "public" channel.
+    my ($router) = grep {$_->{domain} =~ /^public/} @$routers;
+
+	if ($router && $router->{services} && (
+		my $services = $router->{services}->{service})) {
+
+		if (ref $services eq 'ARRAY') {
+			return 1 if grep {$_ eq $service} @$services;
+		} else {
+			return $service eq $services;
+		}
+	}
+
+	return 0;
+}
+
 # Get/set the locale used by all new client sessions 
 # for the current process.  This is primarily useful 
 # for clients that wish to make a series of opensrf 
@@ -208,19 +236,8 @@ sub last_sent_type {
 
 sub get_app_targets {
 	my $app = shift;
-    return ($app);
-
-	my $conf = OpenSRF::Utils::Config->current;
-	my $router_name = $conf->bootstrap->router_name || 'router';
-	my $domain = $conf->bootstrap->domain;
-	$logger->error("use of <domains/> is deprecated") if $conf->bootstrap->domains;
-
-	unless($router_name and $domain) {
-		throw OpenSRF::EX::Config 
-			("Missing router config information 'router_name' and 'domain'");
-	}
-
-    return ("$router_name\@$domain/$app");
+    return OpenSRF::Application->service_is_public($app) ? 
+        "public:$app" : "private:$app";
 }
 
 sub stateless {
@@ -266,13 +283,9 @@ sub create {
 		$sess_id = time . rand( $$ );
 	}
 
-	
 	my ($r_id) = get_app_targets($app);
 
-	my $peer_handle = OpenSRF::Transport::PeerHandle->retrieve("client"); 
-	if( ! $peer_handle ) {
-		$peer_handle = OpenSRF::Transport::PeerHandle->retrieve("system_client");
-	}
+	my $peer_handle = OpenSRF::Transport::PeerHandle->retrieve($app);
 
 	my $self = bless { app_name    => $app,
 			   request_queue  => [],

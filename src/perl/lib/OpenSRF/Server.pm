@@ -17,12 +17,13 @@ use strict;
 use warnings;
 use OpenSRF::Transport;
 use OpenSRF::Application;
+use OpenSRF::AppSession;
 use OpenSRF::Utils::Config;
 use OpenSRF::Transport::PeerHandle;
 use OpenSRF::Utils::SettingsClient;
 use OpenSRF::Utils::Logger qw($logger);
 use OpenSRF::DomainObject::oilsResponse qw/:status/;
-use OpenSRF::Transport::SlimJabber::Client;
+use OpenSRF::Transport::Redis::Client;
 use Encode;
 use POSIX qw/:sys_wait_h :errno_h/;
 use Fcntl qw(F_GETFL F_SETFL O_NONBLOCK);
@@ -342,26 +343,35 @@ sub build_osrf_handle {
     my $self = shift;
 
     my $conf = OpenSRF::Utils::Config->current;
-    my $username = $conf->bootstrap->username;
-    my $password = $conf->bootstrap->passwd;
-    #my $domain = $conf->bootstrap->domain;
-    #my $port = $conf->bootstrap->port;
 
-    # TODO
-    my $domain = '127.0.0.1';
-    my $port = 6379;
+    my $domain  = $conf->bootstrap->domain   || '';
+    my $host    = $conf->bootstrap->host     || '127.0.0.1';
+    my $user    = $conf->bootstrap->username || 'opensrf';
+    my $pass    = $conf->bootstrap->passwd;
+    my $port    = $conf->bootstrap->port     || 6379;
+    my $sock    = $conf->bootstrap->sock;
 
-    my $resource = $self->{service} . '_listener_' . $conf->env->hostname;
+    # Regex here so we can accommodate e.g. private.localhost
+    # Over time, "domain" should be either "private" or "public"
+    $domain = ($domain =~ /^private/) ? 'private' : 'public';
 
-    $logger->debug("server: inbound connecting as $username\@$domain/$resource on port $port");
+    # How I authenticate
+    my $username = "$user\@$domain";
+
+    # Requests are delivered to the service's global request queue on
+    # either the public or private channel.
+    my $service = $self->{service};
+    my $bus_id = OpenSRF::AppSession->service_is_public($service) ? 
+        "public:$service" : "private:$service";
+
+    $logger->info("server: launching with bus_id=$bus_id and username=$username");
 
     $self->{osrf_handle} =
         OpenSRF::Transport::Redis::Client->new(
-            bus_id => $self->{service},
+            bus_id => $bus_id,
             username => $username,
-            resource => $resource,
-            password => $password,
-            host => $domain,
+            password => $pass,
+            host => $host,
             port => $port,
         );
 
@@ -668,7 +678,6 @@ use warnings;
 use OpenSRF::Transport;
 use OpenSRF::Application;
 use OpenSRF::Transport::PeerHandle;
-use OpenSRF::Transport::SlimJabber::XMPPMessage;
 use OpenSRF::Utils::Logger qw($logger);
 use OpenSRF::DomainObject::oilsResponse qw/:status/;
 use Fcntl qw(F_GETFL F_SETFL O_NONBLOCK);
