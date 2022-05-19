@@ -12,16 +12,19 @@ transport_client* client_init(const char* server, int port, const char* unix_pat
 	/* start with an empty message queue */
 	client->bus = NULL;
 	client->bus_id = NULL;
+	client->pub_bus_id = NULL;
 
     client->port = port;
     client->host = server ? strdup(server) : NULL;
     client->unix_path = unix_path ? strdup(unix_path) : NULL;
 	client->error = 0;
+    client->is_public_channel = 0;
 
 	return client;
 }
 
-int client_connect_with_bus_id(transport_client* client) {
+int client_connect_with_bus_id(
+    transport_client* client, const char* username, const char* password) {
 
     // TODO TODO
     client->port = 6379;
@@ -31,7 +34,6 @@ int client_connect_with_bus_id(transport_client* client) {
         "Transport client connecting with bus id: %s; host=%s; port=%d; unix_path=%s", 
         client->bus_id, client->host, client->port, client->unix_path);
 
-    // TODO use redisConnectWithTimeout so we can verify connection.
     if (client->host && client->port) {
         client->bus = redisConnect(client->host, client->port);
     } else if (client->unix_path) {
@@ -41,22 +43,41 @@ int client_connect_with_bus_id(transport_client* client) {
     if (client->bus == NULL) {
         osrfLogError(OSRF_LOG_MARK, "Could not connect to Redis instance");
         return 0;
-    
-    } else {
-        osrfLogInfo(OSRF_LOG_MARK, "Connected to Redis instance OK");
-        return 1;
     }
 
+    osrfLogInfo(OSRF_LOG_MARK, "Connected to Redis instance OK");
+
+    redisReply *reply = 
+        redisCommand(client->bus, "AUTH %s %s", username, password);
+
+    osrfLogInfo(OSRF_LOG_MARK, "Sending AUTH with username=%s", username);
+
+    // reply is free'd on error
+    if (handle_redis_error(reply)) { return 0; }
+
+    osrfLogDebug(OSRF_LOG_MARK, "Redis AUTH succeeded");
+
+    freeReplyObject(reply);
+
+    return 1;
 }
 
-int client_connect_as_service(transport_client* client, const char* appname) {
+int client_connect_as_service(transport_client* client, 
+    const char* username, const char* password, const char* appname) {
 	if (client == NULL || appname == NULL) { return 0; }
+
+    // TODO bus id...
     client->bus_id = strdup(appname);
-    return client_connect_with_bus_id(client);
+
+    return client_connect_with_bus_id(client, username, password);
 }
 
-int client_connect(transport_client* client, const char* appname) {
-	if (client == NULL || appname == NULL) { return 0; }
+int client_connect(transport_client* client, 
+    const char* username, const char* password, const char* appname) {
+
+	if (client == NULL || username == NULL || password == NULL || appname == NULL) { 
+        return 0; 
+    }
 
     char junk[256];
 	snprintf(junk, sizeof(junk), 
@@ -65,14 +86,14 @@ int client_connect(transport_client* client, const char* appname) {
     char* md5 = md5sum(junk);
 
     // Random bit is 16 chars
-    size_t len = 18 + strlen(appname);
+    size_t len = 18 + strlen("client:");
     char bus_id[len];
-    snprintf(bus_id, len, "%s:%s", appname, md5);
+    snprintf(bus_id, len, "client:%s", md5);
 
 	client->bus_id = strdup(bus_id);
     free(md5);
 
-    return client_connect_with_bus_id(client);
+    return client_connect_with_bus_id(client, username, password);
 }
 
 int client_disconnect(transport_client* client) {
@@ -137,17 +158,31 @@ char* recv_one_chunk(transport_client* client, int timeout) {
 
     if (timeout == 0) { // Non-blocking list pop
 
-        len = snprintf(command_buf, 256, "LPOP %s", client->bus_id);
+        if (client->pub_bus_id == NULL) {
+            len = snprintf(command_buf, 256, "LPOP %s", client->bus_id);
+        } else {
+            len = snprintf(command_buf, 256, "LPOP %s %s", client->bus_id, client->pub_bus_id);
+        }
 
     } else {
         
         if (timeout < 0) { // Block indefinitely
 
-            len = snprintf(command_buf, 256, "BLPOP %s 0", client->bus_id);
+            if (client->pub_bus_id == NULL) {
+                len = snprintf(command_buf, 256, "BLPOP %s 0", client->bus_id);
+            } else {
+                len = snprintf(command_buf, 256, 
+                    "BLPOP %s %s 0", client->bus_id, client->pub_bus_id);
+            }
 
         } else { // Block up to timeout seconds
 
-            len = snprintf(command_buf, 256, "BLPOP %s %d", client->bus_id, timeout);
+            if (client->pub_bus_id == NULL) {
+                len = snprintf(command_buf, 256, "BLPOP %s %d", client->bus_id, timeout);
+            } else {
+                len = snprintf(command_buf, 256, 
+                    "BLPOP %s %s %d", client->bus_id, client->pub_bus_id, timeout);
+            }
         }
     }
 
@@ -286,6 +321,7 @@ int client_discard( transport_client* client ) {
 	if (client->host != NULL) { free(client->host); }
 	if (client->unix_path != NULL) { free(client->unix_path); }
 	if (client->bus_id != NULL) { free(client->bus_id); }
+	if (client->pub_bus_id != NULL) { free(client->pub_bus_id); }
 
 	free(client);
 

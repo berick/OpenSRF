@@ -17,6 +17,7 @@
 #include "opensrf/log.h"
 #include "opensrf/osrf_system.h"
 #include "opensrf/osrf_application.h"
+#include "opensrf/osrf_app_session.h"
 #include "opensrf/osrf_prefork.h"
 
 #ifndef HOST_NAME_MAX
@@ -459,38 +460,54 @@ int osrf_system_bootstrap_common(const char* config_file,
 	osrfLogInfo( OSRF_LOG_MARK, "Bootstrapping system with domain %s, port %d, and unixpath %s",
 		domain, iport, unixpath ? unixpath : "(none)" );
 
-    /*
-	transport_client* client = client_init( domain, iport, unixpath, 0 );
-
-	char host[HOST_NAME_MAX + 1] = "";
-	gethostname(host, sizeof(host) );
-	host[HOST_NAME_MAX] = '\0';
-
-	char tbuf[32];
-	tbuf[0] = '\0';
-	snprintf(tbuf, 32, "%f", get_timestamp_millis());
-
-	if(!resource) resource = "";
-
-	int len = strlen(resource) + 256;
-	char buf[len];
-	buf[0] = '\0';
-	snprintf(buf, len - 1, "%s_%s_%s_%ld", resource, host, tbuf, (long) getpid() );
-    */
-
 	transport_client* client = client_init(domain, iport, unixpath);
 
     if (appname == NULL) { appname = "client"; }
 
+    // username@domain
+    // This determines which services we have access to (public vs private).
+    char* login_domain = "private";
+    if (strncmp("public", domain, 6) == 0) {
+        login_domain = "public";
+        client->is_public_channel = 1;
+    }
+
+    growing_buffer* uname = buffer_init(32);
+    buffer_add(uname, username);
+    buffer_add(uname, "@");
+    buffer_add(uname, login_domain);
+
     if (is_service) {
-	    if (client_connect_as_service(client, appname)) {
+
+        // All services listen on the private channel by default.
+        growing_buffer* buf = buffer_init(64);
+        buffer_add(buf, "private:");
+        buffer_add(buf, appname);
+
+        if (osrfServiceIsPublic(appname)) {
+            // Public services also listen on the public channel
+            growing_buffer* buf_public = buffer_init(64);
+            buffer_add(buf_public, "public:");
+            buffer_add(buf_public, appname);
+            client->pub_bus_id = buffer_release(buf_public);
+
+            osrfLogInfo(OSRF_LOG_MARK, "Adding public bus ID for service %s: %s", 
+                appname, client->pub_bus_id);
+        }
+
+	    if (client_connect_as_service(client, uname->buf, password, buf->buf)) {
 		    osrfGlobalTransportClient = client;
 	    }
+
+        buffer_free(buf);
+
     } else {
-	    if (client_connect(client, appname)) {
+	    if (client_connect(client, uname->buf, password, appname)) {
 		    osrfGlobalTransportClient = client;
 	    }
     }
+
+    buffer_free(uname);
 
 	osrfStringArrayFree(arr);
 	free(actlog);

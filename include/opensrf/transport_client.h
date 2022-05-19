@@ -32,19 +32,24 @@ struct transport_client_struct {
 	transport_message* msg_q_tail;   /**< Tail of message queue */
     redisContext* bus;
     char* bus_id;
+    char* pub_bus_id;
     int port;
     char* unix_path;
 	int error;                       /**< Boolean: true if an error has occurred */
 	char* host;                      /**< Domain name or IP address of the Jabber server */
 	char* xmpp_id;                   /**< Jabber ID used for outgoing messages */
+    int is_public_channel;
 };
 typedef struct transport_client_struct transport_client;
 
 transport_client* client_init( const char* server, int port, const char* unix_path );
 
-int client_connect_with_bus_id(transport_client* client); 
-int client_connect_as_service(transport_client* client, const char* appname); 
-int client_connect(transport_client* client, const char* appname); 
+int client_connect_with_bus_id(transport_client* client,
+    const char* username, const char* password); 
+int client_connect_as_service(transport_client* client, 
+    const char* username, const char* password, const char* appname); 
+int client_connect(transport_client* client, 
+    const char* username, const char* password, const char* appname); 
 
 int client_disconnect( transport_client* client );
 

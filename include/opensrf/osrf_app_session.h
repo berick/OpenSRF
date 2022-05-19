@@ -177,6 +177,8 @@ void osrfAppSessionCleanup( void );
 
 void osrfAppSessionPanic( osrfAppSession* ses );
 
+unsigned int osrfServiceIsPublic(const char* service_name);
+
 #ifdef __cplusplus
 }
 #endif

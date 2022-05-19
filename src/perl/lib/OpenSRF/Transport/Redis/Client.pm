@@ -12,7 +12,8 @@ sub new {
     my ($class, %params) = @_;
     my $self = bless({}, ref($class) || $class);
     $self->params(\%params);
-    $logger->info("NEW CLIENT " . OpenSRF::Utils::JSON->perl2JSON(\%params));
+    $self->public_bus_id($params{public_bus_id});
+
     return $self;
 }
 
@@ -20,6 +21,14 @@ sub redis {
     my ($self, $redis) = @_;
     $self->{redis} = $redis if $redis;
     return $self->{redis};
+}
+
+# 'public' vs. 'private'
+# TODO bool instead?
+sub channel {
+    my ($self, $channel) = @_;
+    $self->{channel} = $channel if $channel;
+    return $self->{channel};
 }
 
 sub params {
@@ -76,8 +85,9 @@ sub send {
 }
 
 sub initialize {
-
     my $self = shift;
+
+    return 1 if $self->redis;
 
     my $host = $self->params->{host}; 
     my $port = $self->params->{port}; 
@@ -86,10 +96,9 @@ sub initialize {
 
     my $username = $self->params->{username}; 
     my $password = $self->params->{password}; 
+    $self->channel($self->params->{channel});
 
-    return 1 if $self->redis;
-
-    $logger->debug("Redis client connecting with bus_id $bus_id");
+    $logger->debug("Redis client connecting with bus_id $bus_id; channel=" . $self->channel);
 
     # UNIX socket file takes precedence over host:port.
     my @connect_args = $sock ? (sock => $sock) : (server => "$host:$port");
@@ -105,9 +114,8 @@ sub initialize {
     }
 
     $logger->info("Logging in with username: $username");
-    $logger->info("Logging in with password: $password");
 
-    eval { $self->redis->auth($username, $password) };
+    eval { my $resp = $self->redis->auth($username, $password) };
 
     if ($@) {
         throw OpenSRF::EX::Jabber(
@@ -126,6 +134,11 @@ sub bus_id {
     return $self->{bus_id};
 }
 
+sub public_bus_id {
+    my ($self, $public_bus_id) = @_;
+    $self->{public_bus_id} = $public_bus_id if $public_bus_id;
+    return $self->{public_bus_id};
+}
 
 sub construct {
     my ( $class, $app ) = @_;
@@ -158,13 +171,16 @@ sub recv {
 
     my $packet;
 
+    my @bus_ids = ($self->bus_id);
+    push (@bus_ids, $self->public_bus_id) if $self->public_bus_id;
+
     if ($timeout == 0) {
         # Non-blocking list pop
-        $packet = $self->redis->lpop($self->bus_id);
+        $packet = $self->redis->lpop(@bus_ids);
 
     } else {
         # In Redis, timeout 0 means wait indefinitely
-        $packet = $self->redis->blpop($self->bus_id, $timeout == -1 ? 0 : $timeout);
+        $packet = $self->redis->blpop(@bus_ids, $timeout == -1 ? 0 : $timeout);
     }
 
     # Timed out waiting for data.

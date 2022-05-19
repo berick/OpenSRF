@@ -39,7 +39,8 @@ sub new {
     my $sock    = $conf->bootstrap->sock;
 
     # Bus ID is our address on the bus -- how people talk to us.
-    my $bus_id = "client:$app:" . substr(md5_hex($$ . time . rand($$)), 0, 16);
+    my $bus_id = $app eq 'client' ? 'client:' : "client:$app:";
+    $bus_id .= substr(md5_hex($$ . time . rand($$)), 0, 16);
 
     # Regex here so we can accommodate e.g. private.localhost
     # Over time, "domain" should be either "private" or "public"
@@ -51,7 +52,7 @@ sub new {
     $logger->info("PeerConnection::new() bus_id=$bus_id username=$username");
 
     my $self = $class->SUPER::new(
-        # Username is how we login to the Bus.
+        channel => $domain,
         username => $username,
         password => $pass,
         host => $host,

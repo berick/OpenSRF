@@ -351,24 +351,27 @@ sub build_osrf_handle {
     my $port    = $conf->bootstrap->port     || 6379;
     my $sock    = $conf->bootstrap->sock;
 
-    # Regex here so we can accommodate e.g. private.localhost
-    # Over time, "domain" should be either "private" or "public"
-    $domain = ($domain =~ /^private/) ? 'private' : 'public';
+    # Server handles always connect with the 'private' domain so they can
+    # communicate with with both public and private services.
+    my $username = "$user\@private";
 
-    # How I authenticate
-    my $username = "$user\@$domain";
-
-    # Requests are delivered to the service's global request queue on
-    # either the public or private channel.
+    # Public services listen for requests on the public: channel.
+    # Private services on the private: channel (namespace)
     my $service = $self->{service};
-    my $bus_id = OpenSRF::AppSession->service_is_public($service) ? 
-        "public:$service" : "private:$service";
 
-    $logger->info("server: launching with bus_id=$bus_id and username=$username");
+    # All services listen on the private channel by default.
+    my $bus_id = "private:$service";
+
+    # Public services also listen on the public channel
+    my $public_bus_id = $self->service_is_public($service) ? "public:$service" : '';
+
+    $logger->info("server: launching ".
+        "with bus_id=$bus_id; pub_bus_id=$public_bus_id; username=$username");
 
     $self->{osrf_handle} =
         OpenSRF::Transport::Redis::Client->new(
             bus_id => $bus_id,
+            public_bus_id => $public_bus_id,
             username => $username,
             password => $pass,
             host => $host,
@@ -376,6 +379,32 @@ sub build_osrf_handle {
         );
 
     $self->{osrf_handle}->initialize;
+}
+
+sub service_is_public {
+	my ($self, $service) = @_;
+
+    my $conf = OpenSRF::Utils::Config->current;
+
+    my $routers = $conf->bootstrap->routers;
+
+	return 0 unless $routers && @$routers;
+
+    # Assume a service is private unless it appears in the <services/>
+    # block for a router on the "public" channel.
+    my ($router) = grep {$_->{domain} =~ /^public/} @$routers;
+
+	if ($router && $router->{services} && (
+		my $services = $router->{services}->{service})) {
+
+		if (ref $services eq 'ARRAY') {
+			return 1 if grep {$_ eq $service} @$services;
+		} else {
+			return $service eq $services;
+		}
+	}
+
+	return 0;
 }
 
 

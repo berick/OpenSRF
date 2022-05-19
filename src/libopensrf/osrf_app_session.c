@@ -36,6 +36,7 @@ struct osrf_app_request_struct {
 	osrfAppRequest* prev;
 };
 
+
 static inline unsigned int request_id_hash( int req_id );
 static osrfAppRequest* find_app_request( const osrfAppSession* session, int req_id );
 static void add_app_request( osrfAppSession* session, osrfAppRequest* req );
@@ -562,26 +563,15 @@ osrfAppSession* osrfAppSessionClientInit( const char* remote_service ) {
 		return NULL;
 	}
 
-	char target_buf[512];
-	target_buf[ 0 ] = '\0';
-
-	// Using the router name, domain, and service name,
-	// build a Jabber ID for addressing the service.
-	int len = snprintf( target_buf, sizeof(target_buf), "%s@%s/%s",
-			router_name ? router_name : "(null)",
-			domain ? domain : "(null)",
-			remote_service ? remote_service : "(null)" );
 	osrfStringArrayFree(arr);
 	free(router_name);
 
-	if( len >= sizeof( target_buf ) ) {
-		osrfLogWarning( OSRF_LOG_MARK, "Buffer overflow for remote_id");
-		free( session );
-		return NULL;
-	}
+    growing_buffer* buf = buffer_init(64);
+    buffer_add(buf, 
+        session->transport_handle->is_public_channel ? "public:" : "private:");
+    buffer_add(buf, remote_service);
 
-	//session->remote_id = strdup(target_buf);
-    session->remote_id = strdup(remote_service);
+	session->remote_id = strdup(buffer_release(buf));
 	session->orig_remote_id = strdup(session->remote_id);
 	session->remote_service = strdup(remote_service);
 	session->session_locale = NULL;
@@ -1459,3 +1449,56 @@ void osrfAppSessionPanic( osrfAppSession* ses ) {
 	if( ses )
 		ses->panic = 1;
 }
+
+unsigned int osrfServiceIsPublic(const char* service) {
+	jsonObject* routerInfo = osrfConfigGetValueObject(NULL, "/routers/router");
+
+    unsigned int public = 0;
+
+	for (int i = 0; i < routerInfo->size; i++) {
+
+		const jsonObject* routerChunk = jsonObjectGetIndex(routerInfo, i);
+
+        if (routerChunk == NULL || routerChunk->type == JSON_NULL) { break; }
+
+        const char* domain = jsonObjectGetString(jsonObjectGetKeyConst(routerChunk, "domain"));
+        const jsonObject* services = jsonObjectGetKeyConst(routerChunk, "services");
+
+        if (strncmp(domain, "public", 6) != 0) {
+            continue;
+        }
+
+        if (services && services->type == JSON_HASH) {
+
+            const jsonObject* service_obj = jsonObjectGetKeyConst(services, "service");
+
+            if (!service_obj) { continue; }
+
+            if (JSON_ARRAY == service_obj->type) {
+                for (int j = 0; j < service_obj->size; j++) {
+
+                    const char* svc = 
+                        jsonObjectGetString(jsonObjectGetIndex(service_obj, j));
+
+                    if (svc && !strcmp(svc, service)) {
+                        public = 1;
+                        break;
+                    }
+                }
+            } else if (JSON_STRING == service_obj->type) {
+                // services list is only a single serivce
+                if (!strcmp(service, jsonObjectGetString(service_obj))) {
+                    public = 1;
+                }
+            }
+        }
+
+        if (public) { break; }
+    }
+
+	jsonObjectFree(routerInfo);
+
+    return public;
+}
+
+
