@@ -115,7 +115,8 @@ int client_send_message(transport_client* client, transport_message* msg) {
 
     message_prepare_json(msg);
 
-    osrfLogDebug(OSRF_LOG_MARK, "client_send_message() %s", msg->msg_json);
+    osrfLogDebug(OSRF_LOG_MARK, 
+        "client_send_message() recipient=%s json=%s", msg->recipient, msg->msg_json);
 
     redisReply *reply = 
         redisCommand(client->bus, "RPUSH %s %s", msg->recipient, msg->msg_json);

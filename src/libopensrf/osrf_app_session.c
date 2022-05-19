@@ -571,6 +571,8 @@ osrfAppSession* osrfAppSessionClientInit( const char* remote_service ) {
         session->transport_handle->is_public_channel ? "public:" : "private:");
     buffer_add(buf, remote_service);
 
+    osrfLogDebug(OSRF_LOG_MARK, "Creating a client talking to %s", buf->buf);
+
 	session->remote_id = strdup(buffer_release(buf));
 	session->orig_remote_id = strdup(session->remote_id);
 	session->remote_service = strdup(remote_service);
