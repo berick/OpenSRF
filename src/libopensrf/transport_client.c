@@ -188,7 +188,7 @@ char* recv_one_chunk(transport_client* client, int timeout) {
 
     command_buf[len] = '\0';
 
-    osrfLogInternal(OSRF_LOG_MARK, 
+    osrfLogDebug(OSRF_LOG_MARK, 
         "recv_one_chunk() sending command: %s", command_buf);
 
     redisReply* reply = redisCommand(client->bus, command_buf);
