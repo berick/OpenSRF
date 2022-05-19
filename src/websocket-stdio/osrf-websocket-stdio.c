@@ -90,7 +90,7 @@ static growing_buffer* stdin_buf = NULL;
 // OpenSRF XMPP connection handle
 static transport_client* osrf_handle = NULL;
 // Reusable string buf for recipient addresses
-static char recipient_buf[RECIP_BUF_SIZE];
+// static char recipient_buf[RECIP_BUF_SIZE];
 // Websocket client IP address (for logging)
 static char* client_ip = NULL;
 
@@ -266,7 +266,7 @@ static void child_init(int argc, char* argv[]) {
         config_file = argv[1];
     }
 
-    if (!osrf_system_bootstrap_common(config_file, config_ctxt, "websocket", 0) ) {
+    if (!osrf_system_bootstrap_common(config_file, config_ctxt, "client", 0) ) {
         fprintf(stderr, "Cannot boostrap OSRF\n");
         shut_it_down(1);
     }
@@ -438,11 +438,10 @@ static void relay_stdin_message(const char* msg_string) {
     if (!recipient) {
 
         if (service) {
-            size_t len = strlen(service);
-            memcpy(recipient_buf, service, len);
-            recipient_buf[len] = '\0';
-            recipient = recipient_buf;
-
+            growing_buffer* buf = buffer_init(64);
+            buffer_add(buf, osrf_handle->is_public_channel ? "public:" : "private:");
+            buffer_add(buf, service);
+            recipient = buffer_release(buf);
         } else {
             osrfLogWarning(OSRF_LOG_MARK, "WS Unable to determine recipient");
             return;
@@ -456,6 +455,8 @@ static void relay_stdin_message(const char* msg_string) {
     // 'recipient' will be freed in extract_inbound_messages
     // during a DISCONNECT call.  Retain a local copy.
     recipient = strdup(recipient);
+
+    osrfLogDebug(OSRF_LOG_MARK, "Creating a client talking to %s", recipient);
 
     msg_body = extract_inbound_messages(service, thread, osrf_msg);
 

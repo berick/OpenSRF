@@ -78,11 +78,13 @@ static apr_status_t child_exit(void* data) {
 static void osrf_json_gateway_child_init(apr_pool_t *p, server_rec *s) {
 
 	char* cfg = osrf_json_gateway_config_file;
+    /*
 	char buf[32];
 	int t = time(NULL);
 	snprintf(buf, sizeof(buf), "%d", t);
+    */
 
-	if( ! osrf_system_bootstrap_common( cfg, CONFIG_CONTEXT, buf, 0 ) ) {
+	if( ! osrf_system_bootstrap_common( cfg, CONFIG_CONTEXT, "client", 0 ) ) {
 		ap_log_error( APLOG_MARK, APLOG_ERR, 0, s,
 			"Unable to Bootstrap OpenSRF Client with config %s..", cfg);
 		return;
