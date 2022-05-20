@@ -622,9 +622,17 @@ sub do_reset_bus_auth {
         'base_path' => '/config/gateway'                                        
     ); 
 
-    my $pub_username = $pub_conf->gateway->{username};
-    my $pub_password = $pub_conf->gateway->{passwd};
-    my $pub_domain = $pub_conf->gateway->{domain};
+    my $username = $pub_conf->gateway->{username};
+    my $password = $pub_conf->gateway->{passwd};
+    my $domain = $pub_conf->gateway->{domain};
+    my $port = $pub_conf->gateway->{port};
+    my $sock = $pub_conf->gateway->{sock};
+    # TODO
+    my $host = $pub_conf->gateway->{host} || '127.0.0.1';
+
+    my @connect_args = $sock ? (sock => $sock) : (server => "$host:$port");
+    my $redis = Redis->new(@connect_args) or 
+        die "Cannot connect to Redis instance at @connect_args\n";
 
     my $routers = $conf->bootstrap->routers;
     my @public_services;
@@ -633,7 +641,7 @@ sub do_reset_bus_auth {
         next unless ref $router 
             && $router->{services} 
             && $router->{services}->{service}
-            && $router->{domain} eq $pub_domain;
+            && $router->{domain} eq $domain;
 
         if (ref($router->{services}->{service}) eq 'ARRAY') {
             push(@public_services, @{$router->{services}->{service}});
@@ -644,16 +652,18 @@ sub do_reset_bus_auth {
     }
 
     # Create a special 'public' namespace for public client logins.
-    my $username = "$pub_username\@public";
+    $username = "$username\@public";
 
-    msg("ACL SETUSER $username reset");
-    msg("ACL SETUSER $username ok >$pub_password -\@all");
-    msg("ACL SETUSER $username +lpop +blpop +rpush");
-    msg("ACL SETUSER $username ~client:*");
+    $redis->acl('SETUSER', $username, 'reset');
+    $redis->acl('SETUSER', $username, 'on', ">$password", '-@all');
+    $redis->acl('SETUSER', $username, '+lpop', '+blpop', '+rpush');
+    $redis->acl('SETUSER', $username, '~client:*');
 
     for my $service (@public_services) {
-        msg("ACL SETUSER $username ~$service");
+        $redis->acl('SETUSER', $username, "~$service");
     }
+
+    $redis->quit;
 }
 
 sub msg {
