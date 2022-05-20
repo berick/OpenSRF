@@ -613,17 +613,27 @@ sub load_settings {
 sub do_reset_bus_auth {
     my $conf = OpenSRF::Utils::Config->current;
 
+    # Read in a shared portion of the config file                              
+    # for later use in log parameter redaction                                 
+    my $pub_conf = OpenSRF::Utils::Config->load(         
+        'config_file' => OpenSRF::Utils::Config->current->FILE,                
+        'nocache' => 1,                                                        
+        'force' => 1,                                                          
+        'base_path' => '/config/gateway'                                        
+    ); 
+
+    my $pub_username = $pub_conf->gateway->{username};
+    my $pub_password = $pub_conf->gateway->{passwd};
+    my $pub_domain = $pub_conf->gateway->{domain};
+
     my $routers = $conf->bootstrap->routers;
     my @public_services;
     for my $router (@$routers) {
 
-        next unless ref $router && 
-            $router->{services} && $router->{services}->{service};
-
-        # If a service registers with a router on a domain starting
-        # with "public", it's considered a public service.
-        # TODO Make this more strict / predictable.
-        next unless $router->{domain} =~ /^public/;
+        next unless ref $router 
+            && $router->{services} 
+            && $router->{services}->{service}
+            && $router->{domain} eq $pub_domain;
 
         if (ref($router->{services}->{service}) eq 'ARRAY') {
             push(@public_services, @{$router->{services}->{service}});
@@ -633,15 +643,11 @@ sub do_reset_bus_auth {
         }
     }
 
-    my $username = 'opensrf@public';
-
-    # TODO we need to get this from a public client in opensrf_core.xml
-    # (e.g. the gateway), but OpenSRF::Utils::Config->current refers to 
-    # the settings for a private client.  
-    my $password = 'password';
+    # Create a special 'public' namespace for public client logins.
+    my $username = "$pub_username\@public";
 
     msg("ACL SETUSER $username reset");
-    msg("ACL SETUSER $username ok >$password -\@all");
+    msg("ACL SETUSER $username ok >$pub_password -\@all");
     msg("ACL SETUSER $username +lpop +blpop +rpush");
     msg("ACL SETUSER $username ~client:*");
 
