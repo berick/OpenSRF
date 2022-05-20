@@ -443,6 +443,8 @@ static void relay_stdin_message(const char* msg_string) {
             recipient_buf[len] = '\0';
             recipient = recipient_buf;
 
+            // TODO verify valid public service here
+
         } else {
             osrfLogWarning(OSRF_LOG_MARK, "WS Unable to determine recipient");
             return;

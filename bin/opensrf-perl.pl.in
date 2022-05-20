@@ -62,6 +62,7 @@ my $opt_reload_all = 0;
 my $opt_quiet = 0;
 my $opt_diagnostic = 0;
 my $opt_ignore_orphans = 0;
+my $opt_reset_bus_auth = 0;
 my $sclient;
 my @perl_services;
 my @nonperl_services;
@@ -104,6 +105,7 @@ GetOptions(
     'reload' => \$opt_reload,
     'reload-all' => \$opt_reload_all,
     'diagnostic' => \$opt_diagnostic,
+    'reset-bus-auth' => \$opt_reset_bus_auth,
     'ignore-orphans' => \$opt_ignore_orphans
 );
 
@@ -608,6 +610,46 @@ sub load_settings {
         $parser->get_server_config($conf->env->hostname);
 }
 
+sub do_reset_bus_auth {
+    my $conf = OpenSRF::Utils::Config->current;
+
+    my $routers = $conf->bootstrap->routers;
+    my @public_services;
+    for my $router (@$routers) {
+
+        next unless ref $router && 
+            $router->{services} && $router->{services}->{service};
+
+        # If a service registers with a router on a domain starting
+        # with "public", it's considered a public service.
+        # TODO Make this more strict / predictable.
+        next unless $router->{domain} =~ /^public/;
+
+        if (ref($router->{services}->{service}) eq 'ARRAY') {
+            push(@public_services, @{$router->{services}->{service}});
+        } else {
+            # Only one service means the value is a string.
+            push(@public_services, $router->{services}->{service});
+        }
+    }
+
+    my $username = 'opensrf@public';
+
+    # TODO we need to get this from a public client in opensrf_core.xml
+    # (e.g. the gateway), but OpenSRF::Utils::Config->current refers to 
+    # the settings for a private client.  
+    my $password = 'password';
+
+    msg("ACL SETUSER $username reset");
+    msg("ACL SETUSER $username ok >$password -\@all");
+    msg("ACL SETUSER $username +lpop +blpop +rpush");
+    msg("ACL SETUSER $username ~client:*");
+
+    for my $service (@public_services) {
+        msg("ACL SETUSER $username ~$service");
+    }
+}
+
 sub msg {
     my $m = shift;
     print "* $m\n" unless $opt_quiet;
@@ -767,9 +809,12 @@ do_init() and verify_services($opt_service) if
     $opt_start_services or
     $opt_restart or
     $opt_restart_all or
+    $opt_reset_bus_auth or
     $opt_restart_services) and (
         not defined $opt_service or $opt_service ne 'router'
     );
+
+do_reset_bus_auth() if $opt_reset_bus_auth;
 
 # starting services.  do_init() handled above
 do_start($opt_service) if $opt_start;
@@ -809,6 +854,7 @@ do_diagnostic() if $opt_diagnostic;
 
 # show help if no action was requested
 do_help() if $opt_help or not (
+    $opt_reset_bus_auth or
     $opt_start or 
     $opt_start_all or 
     $opt_start_services or 
