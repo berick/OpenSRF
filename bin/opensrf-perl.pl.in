@@ -25,6 +25,7 @@ use OpenSRF::Utils::SettingsClient;
 use OpenSRF::Transport::Listener;
 use OpenSRF::Utils;
 use OpenSRF::Utils::Config;
+use XML::LibXML;
 
 my $opt_service = undef;
 my $opt_config = "@CONF_DIR@/opensrf_core.xml";
@@ -611,55 +612,42 @@ sub load_settings {
 }
 
 sub do_reset_bus_auth {
-    my $conf = OpenSRF::Utils::Config->current;
+    # NOTE I had issues using OpenSRF::Utils::Config to parse the extra
+    # config bits.  Things that I expected to be hashes were arrays.
+    # I probably fudged the incantion.  For expediancy, using libxml 
+    # for now.
 
-    # Read in a shared portion of the config file                              
-    # for later use in log parameter redaction                                 
-    my $pub_conf = OpenSRF::Utils::Config->load(         
-        'config_file' => OpenSRF::Utils::Config->current->FILE,                
-        'nocache' => 1,                                                        
-        'force' => 1,                                                          
-        'base_path' => '/config/gateway'                                        
-    ); 
+    # TODO file path
+    # TODO move this into a shared perl mod
+    my $bus_config_file = "/openils/conf/bus_config.xml";
+    my $doc = XML::LibXML->load_xml(location => $bus_config_file);
 
-    my $username = $pub_conf->gateway->{username};
-    my $password = $pub_conf->gateway->{passwd};
-    my $domain = $pub_conf->gateway->{domain};
-    my $port = $pub_conf->gateway->{port};
-    my $sock = $pub_conf->gateway->{sock};
-    # TODO
-    my $host = $pub_conf->gateway->{host} || '127.0.0.1';
+    die "No message-bus config found at $bus_config_file"
+        unless $doc->findnodes("//message-bus");
+
+    my $get = sub {
+        my $key = shift;
+        my $node = $doc->findnodes("//message-bus/$key")->pop;
+        return $node ? $node->textContent : '';
+    };
+
+    my $username = $get->('public-client/username');
+    my $password = $get->('public-client/password');
+    my $permissions = $get->('public-client/permissions');
+    my $host = $get->('host');
+    my $port = $get->('port');
+    my $sock = $get->('sock');
 
     my @connect_args = $sock ? (sock => $sock) : (server => "$host:$port");
     my $redis = Redis->new(@connect_args) or 
         die "Cannot connect to Redis instance at @connect_args\n";
 
-    my $routers = $conf->bootstrap->routers;
-    my @public_services;
-    for my $router (@$routers) {
-
-        next unless ref $router 
-            && $router->{services} 
-            && $router->{services}->{service}
-            && $router->{domain} eq $domain;
-
-        if (ref($router->{services}->{service}) eq 'ARRAY') {
-            push(@public_services, @{$router->{services}->{service}});
-        } else {
-            # Only one service means the value is a string.
-            push(@public_services, $router->{services}->{service});
-        }
-    }
-
-    # Create a special 'public' namespace for public client logins.
-    $username = "$username\@public";
-
     $redis->acl('SETUSER', $username, 'reset');
-    $redis->acl('SETUSER', $username, 'on', ">$password", '-@all');
-    $redis->acl('SETUSER', $username, '+lpop', '+blpop', '+rpush');
-    $redis->acl('SETUSER', $username, '~client:*');
+    $redis->acl('SETUSER', $username, 'on', ">$password");
+    $redis->acl('SETUSER', $username, split(/ /, $permissions));
 
-    for my $service (@public_services) {
+    for my $svc_node ($doc->findnodes("//message-bus/public-services/service")) {
+        my $service = $svc_node->textContent;
         $redis->acl('SETUSER', $username, "~$service");
     }
 
