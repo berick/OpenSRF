@@ -52,6 +52,7 @@ use XML::LibXML;
 use OpenSRF::Utils (':common');  
 use OpenSRF::Utils::Logger;
 use Net::Domain qw/hostfqdn/;
+use XML::Simple;
 
 #use overload '""' => \&OpenSRF::Utils::Config::dump_ini;
 
@@ -267,11 +268,19 @@ sub _load {
 	$self->mangle_dirs();
 	$self->mangle_logs();
 
+    $self->as_hash(XML::Simple->new->XMLin($self->FILE));
+
 	$OpenSRF::Utils::ConfigCache = $self unless $self->nocache;
 	delete $$self{nocache};
 	delete $$self{force};
 	delete $$self{base_path};
 	return $self;
+}
+
+sub as_hash {
+    my ($self, $hash) = @_;
+    $self->{as_hash} = $hash if $hash;
+    return $self->{as_hash};
 }
 
 sub sections {

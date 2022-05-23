@@ -3,7 +3,6 @@ use strict;
 use warnings;
 use Redis;
 use Time::HiRes q/time/;
-use OpenSRF::Utils::Config;
 use OpenSRF::Utils::JSON;
 use OpenSRF::Utils::Logger qw/$logger/;
 use OpenSRF::Transport::Redis::Message;
@@ -86,8 +85,6 @@ sub initialize {
     my ($package, $filename, $line) = caller;
     $logger->debug("Redis client connecting with bus_id $bus_id : $filename : $line");
 
-    my $conf = OpenSRF::Utils::Config->current;
-
     return 1 if $self->redis;
 
     # UNIX socket file takes precedence over host:port.
@@ -116,8 +113,8 @@ sub bus_id {
 
 
 sub construct {
-    my ( $class, $app ) = @_;
-    $class->peer_handle($class->new( $app )->initialize());
+    my ($class, $app, $context) = @_;
+    $class->peer_handle($class->new($app, $context)->initialize);
 }
 
 

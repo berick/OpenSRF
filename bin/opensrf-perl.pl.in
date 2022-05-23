@@ -25,7 +25,7 @@ use OpenSRF::Utils::SettingsClient;
 use OpenSRF::Transport::Listener;
 use OpenSRF::Utils;
 use OpenSRF::Utils::Config;
-use XML::LibXML;
+use Redis;
 
 my $opt_service = undef;
 my $opt_config = "@CONF_DIR@/opensrf_core.xml";
@@ -611,47 +611,61 @@ sub load_settings {
         $parser->get_server_config($conf->env->hostname);
 }
 
+# Apply bus access and permissions for accounts defined in the <connections/> block.
+# This will generally be called before we connect to the system, since the 
+# system may not yet have access to connect to the bus.
 sub do_reset_bus_auth {
-    # NOTE I had issues using OpenSRF::Utils::Config to parse the extra
-    # config bits.  Things that I expected to be hashes were arrays.
-    # I probably fudged the incantion.  For expediancy, using libxml 
-    # for now.
 
-    # TODO file path
-    # TODO move this into a shared perl mod
-    my $bus_config_file = "/openils/conf/bus_config.xml";
-    my $doc = XML::LibXML->load_xml(location => $bus_config_file);
+    my $base_conf = OpenSRF::Utils::Config->load(
+        config_file => $opt_config, nocache => 1)->as_hash
+        or die "No suitable configuration found at $opt_config\n";
 
-    die "No message-bus config found at $bus_config_file"
-        unless $doc->findnodes("//message-bus");
+    my $connections = $base_conf->{connections} or
+        die "No connection configuration found in $opt_config\n";
 
-    my $get = sub {
-        my $key = shift;
-        my $node = $doc->findnodes("//message-bus/$key")->pop;
-        return $node ? $node->textContent : '';
-    };
+    for my $type (keys %$connections) {
+        msg("Applying bus access for connection type: $type");
 
-    my $username = $get->('public-client/username');
-    my $password = $get->('public-client/password');
-    my $permissions = $get->('public-client/permissions');
-    my $host = $get->('host');
-    my $port = $get->('port');
-    my $sock = $get->('sock');
+        my $conf = $connections->{$type};
+        my $bus_conf = $conf->{message_bus};
 
-    my @connect_args = $sock ? (sock => $sock) : (server => "$host:$port");
-    my $redis = Redis->new(@connect_args) or 
-        die "Cannot connect to Redis instance at @connect_args\n";
+        my $username = $bus_conf->{username};
+        my $password = $bus_conf->{password};
+        my $host = $bus_conf->{host};
+        my $port = $bus_conf->{port};
+        my $sock = $bus_conf->{sock};
 
-    $redis->acl('SETUSER', $username, 'reset');
-    $redis->acl('SETUSER', $username, 'on', ">$password");
-    $redis->acl('SETUSER', $username, split(/ /, $permissions));
+        # NOTE: This redis connection uses the "default" superuser account
+        # so it can manage access for opensrf accounts.  No ACL commands
+        # occur here (unless we want to give 'default' a password for 
+        # added safety).
+        my @connect_args = $sock ? (sock => $sock) : (server => "$host:$port");
+        my $redis = Redis->new(@connect_args) or 
+            die "Cannot connect to Redis instance at @connect_args\n";
 
-    for my $svc_node ($doc->findnodes("//message-bus/public-services/service")) {
-        my $service = $svc_node->textContent;
-        $redis->acl('SETUSER', $username, "~$service");
+        $redis->acl('SETUSER', $username, 'reset');
+        $redis->acl('SETUSER', $username, 'on', ">$password");
+
+        my $permissions = '-@all +lpop +blpop +rpush +del ~client:* ~service:*';
+
+        if (!$conf->{privileged}) {
+            msg("Limiting bus access for non-privileged connection type=$type");
+
+            # Unprivileged connections have access to client: and a subset
+            # of the available services (i.e. public services).
+            $permissions = '-@all +lpop +blpop +rpush ~client:*';
+
+            # Non-privileged connections can only interact with public
+            # service bus endpoints.
+            for my $service (@{$base_conf->{public_services}->{service}}) {
+                $redis->acl('SETUSER', $username, "~service:$service");
+            }
+        }
+
+        $redis->acl('SETUSER', $username, split(/ /, $permissions));
+
+        $redis->quit;
     }
-
-    $redis->quit;
 }
 
 sub msg {
@@ -813,7 +827,6 @@ do_init() and verify_services($opt_service) if
     $opt_start_services or
     $opt_restart or
     $opt_restart_all or
-    $opt_reset_bus_auth or
     $opt_restart_services) and (
         not defined $opt_service or $opt_service ne 'router'
     );

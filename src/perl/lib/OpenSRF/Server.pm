@@ -341,28 +341,23 @@ sub kill_child {
 sub build_osrf_handle {
     my $self = shift;
 
-    my $conf = OpenSRF::Utils::Config->current;
-    my $username = $conf->bootstrap->username;
-    my $password = $conf->bootstrap->passwd;
-    #my $domain = $conf->bootstrap->domain;
-    #my $port = $conf->bootstrap->port;
+    my $conf = OpenSRF::Utils::Config->current
+        ->as_hash->{config}->{connections}->{service}->{message_bus};
 
-    # TODO
-    my $domain = '127.0.0.1';
-    my $port = 6379;
-
-    my $resource = $self->{service} . '_listener_' . $conf->env->hostname;
-
-    $logger->debug("server: inbound connecting as $username\@$domain/$resource on port $port");
+    my $port = $conf->{port} || 6379;
+    my $host = $conf->{host} || '127.0.0.1';
+    my $sock = $conf->{sock};
+    my $username = $conf->{username};
+    my $password = $conf->{password};
 
     $self->{osrf_handle} =
         OpenSRF::Transport::Redis::Client->new(
             bus_id => $self->{service},
-            username => $username,
-            resource => $resource,
-            password => $password,
-            host => $domain,
+            host => $host,
             port => $port,
+            sock => $sock,
+            username => $username,
+            password => $password
         );
 
     $self->{osrf_handle}->initialize;
