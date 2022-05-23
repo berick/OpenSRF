@@ -55,12 +55,17 @@ sub INTERNAL { return 5; }
 sub ALL      { return 100; }
 
 my $isclient;  # true if we control the osrf_xid
+my $connection_type;
 
 # load up our config options
 sub set_config {
     my $force = shift;
+    my $con_type = shift;
+    $connection_type = $con_type if $con_type;
 
     return if defined $config and !$force;
+
+    die "Logger connection type needed\n" unless $connection_type;
 
     $config = OpenSRF::Utils::Config->current;
     if( !defined($config) ) {
@@ -69,19 +74,21 @@ sub set_config {
         return;
     }
 
-    $loglevel =  $config->bootstrap->loglevel; 
+    $config = $config->as_hash->{connections}->{$connection_type};
 
-    if ($config->bootstrap->loglength) {
+    $loglevel =  $config->{loglevel};
+
+    if ($config->{loglength}) {
         $max_log_msg_len = $config->bootstrap->loglength;
     }
 
-    $service_tag = $config->bootstrap->logtag;
+    $service_tag = $config->{logtag};
 
-    $logfile = $config->bootstrap->logfile;
+    $logfile = $config->{logfile};
     if($logfile =~ /^syslog/) {
         $syslog_enabled = 1;
         $logfile_enabled = 0;
-        $logfile = $config->bootstrap->syslog;
+        $logfile = $config->{syslog};
         $facility = $logfile;
         $logfile = undef;
         $facility = _fac_to_const($facility);
@@ -100,7 +107,7 @@ sub set_config {
         # --------------------------------------------------------------
         $act_syslog_enabled = 1;
         $act_logfile_enabled = 0;
-        $actfac = $config->bootstrap->actlog || $config->bootstrap->syslog;
+        $actfac = $config->{actlog} || $config->{syslog};
         $actfac = _fac_to_const($actfac);
         $actfile = undef;
     } else {
@@ -110,10 +117,10 @@ sub set_config {
         # --------------------------------------------------------------
         $act_syslog_enabled = 0;
         $act_logfile_enabled = 1;
-        $actfile = $config->bootstrap->actlog || $config->bootstrap->logfile;
+        $actfile = $config->{actlog} || $config->{logfile};
     }
 
-    my $client = OpenSRF::Utils::Config->current->bootstrap->client();
+    my $client = $config->{client} || '';
 
     if ($ENV{OSRF_LOG_CLIENT} or $ENV{MOD_PERL}) {
         $isclient = 1;
@@ -124,6 +131,7 @@ sub set_config {
         $isclient = 0;
         return;
     }
+
     $isclient = ($client =~ /^true$/iog) ?  1 : 0;
 }
 

@@ -603,7 +603,7 @@ sub do_daemon {
 # parses the local settings file
 sub load_settings {
     my $conf = OpenSRF::Utils::Config->current;
-    my $cfile = $conf->bootstrap->settings_config;
+    my $cfile = $conf->as_hash->{settings_config};
     return unless $cfile;
     my $parser = OpenSRF::Utils::SettingsParser->new();
     $parser->initialize( $cfile );

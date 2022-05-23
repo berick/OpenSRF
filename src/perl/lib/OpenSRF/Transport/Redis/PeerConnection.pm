@@ -26,16 +26,19 @@ sub new {
 
     my $conf = OpenSRF::Utils::Config->current->as_hash;
 
-    die "No suitable connection configuration found\n" unless 
-        $conf->{connections} && ($conf = $conf->{connections}->{connection_type});
+    $conf = $conf->{connections} or
+        die "No 'connections' block in bootstrap configuration\n";
+
+    $conf = $conf->{$connection_type} or
+        die "No '$connection_type' connection in bootstrap configuration\n";
 
     $conf = $conf->{message_bus};
 
     my $port = $conf->{port} || 6379;
     my $host = $conf->{host} || '127.0.0.1';
     my $sock = $conf->{sock};
-    my $username = $conf->{'username'};
-    my $password = $conf->{'password'};
+    my $username = $conf->{username};
+    my $password = $conf->{password};
 
     my $bus_id = "$app:" . substr(md5_hex($$ . time . rand($$)), 0, 12);
 
