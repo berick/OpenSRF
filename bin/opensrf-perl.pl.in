@@ -115,7 +115,7 @@ if ($opt_localhost) {
     $ENV{OSRF_HOSTNAME} = $hostname;
 }
 
-my $C_COMMAND = "opensrf-c -c $opt_config -x opensrf -p $opt_pid_dir -h $hostname";
+my $C_COMMAND = "opensrf-c -c $opt_config -x service -p $opt_pid_dir -h $hostname";
 
 sub verify_services {
     my $service = shift;

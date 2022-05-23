@@ -541,6 +541,8 @@ osrfAppSession* osrfAppSessionClientInit( const char* remote_service ) {
 		return NULL;
 	}
 
+    /*
+
 	// Get a list of domain names from the config settings;
 	// ignore all but the first one in the list.
 	osrfStringArray* arr = osrfNewStringArray(8);
@@ -579,9 +581,14 @@ osrfAppSession* osrfAppSessionClientInit( const char* remote_service ) {
 		free( session );
 		return NULL;
 	}
+    */
 
-	//session->remote_id = strdup(target_buf);
-    session->remote_id = strdup(remote_service);
+    growing_buffer *buf = buffer_init(32);
+    buffer_add(buf, "service:");
+    buffer_add(buf, remote_service);
+
+	session->remote_id = buffer_release(buf);
+    //session->remote_id = strdup(remote_service);
 	session->orig_remote_id = strdup(session->remote_id);
 	session->remote_service = strdup(remote_service);
 	session->session_locale = NULL;

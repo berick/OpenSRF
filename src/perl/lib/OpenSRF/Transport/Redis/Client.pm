@@ -68,24 +68,25 @@ sub send {
 
     my $msg_json = $msg->to_json;
 
-    $logger->internal("send(): $msg_json");
+    $logger->debug("send(): to=" . $msg->to . " : $msg_json");
 
     $self->redis->rpush($msg->to, $msg_json);
 }
 
 sub initialize {
-
     my $self = shift;
 
-    my $host = $self->params->{host}; 
-    my $port = $self->params->{port}; 
-    my $sock = $self->params->{sock}; 
+    my $host = $self->params->{host} || ''; 
+    my $port = $self->params->{port} || 0; 
+    my $sock = $self->params->{sock} || ''; 
+    my $username = $self->params->{username}; 
+    my $password = $self->params->{password}; 
     my $bus_id = $self->params->{bus_id};
 
-    my ($package, $filename, $line) = caller;
-    $logger->debug("Redis client connecting with bus_id $bus_id : $filename : $line");
+    $logger->debug("Redis client connecting: ".
+        "host=$host port=$port sock=$sock username=$username bus_id=$bus_id");
 
-    return 1 if $self->redis;
+    return 1 if $self->redis; # already connected
 
     # UNIX socket file takes precedence over host:port.
     my @connect_args = $sock ? (sock => $sock) : (server => "$host:$port");
@@ -99,6 +100,13 @@ sub initialize {
         throw OpenSRF::EX::Jabber("Could not connect to Redis bus with @connect_args");
         return 0;
     }
+
+    unless ($self->redis->auth($username, $password) eq 'OK') {
+        throw OpenSRF::EX::Jabber("Cannot authenticate with Redis instance user=$username");
+        return 0;
+    }
+
+    $logger->debug("Auth'ed with Redis as $username OK : bus_id=$bus_id");
 
     $self->bus_id($bus_id);
 
@@ -142,6 +150,8 @@ sub recv {
     my ($self, $timeout) = @_;
 
     my $packet;
+
+    $logger->debug("server: watching for content at " . $self->bus_id);
 
     if ($timeout == 0) {
         # Non-blocking list pop

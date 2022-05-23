@@ -42,9 +42,11 @@ typedef struct transport_client_struct transport_client;
 
 transport_client* client_init( const char* server, int port, const char* unix_path );
 
-int client_connect_with_bus_id(transport_client* client); 
-int client_connect_as_service(transport_client* client, const char* appname); 
-int client_connect(transport_client* client, const char* appname); 
+int client_connect_with_bus_id(transport_client* client, const char* username, const char* password); 
+int client_connect_as_service(transport_client* client, 
+    const char* appname, const char* username, const char* password); 
+int client_connect(transport_client* client, 
+    const char* appname, const char* username, const char* password); 
 
 int client_disconnect( transport_client* client );
 

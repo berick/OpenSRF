@@ -21,11 +21,8 @@ transport_client* client_init(const char* server, int port, const char* unix_pat
 	return client;
 }
 
-int client_connect_with_bus_id(transport_client* client) {
-
-    // TODO TODO
-    client->port = 6379;
-    client->host = strdup("127.0.0.1");
+int client_connect_with_bus_id(transport_client* client, 
+	const char* username, const char* password) {
 
     osrfLogDebug(OSRF_LOG_MARK, 
         "Transport client connecting with bus id: %s; host=%s; port=%d; unix_path=%s", 
@@ -41,21 +38,34 @@ int client_connect_with_bus_id(transport_client* client) {
     if (client->bus == NULL) {
         osrfLogError(OSRF_LOG_MARK, "Could not connect to Redis instance");
         return 0;
-    
-    } else {
-        osrfLogInfo(OSRF_LOG_MARK, "Connected to Redis instance OK");
-        return 1;
     }
 
+    osrfLogInfo(OSRF_LOG_MARK, "Connected to Redis instance OK");
+
+    redisReply *reply = 
+        redisCommand(client->bus, "AUTH %s %s", username, password);
+
+    osrfLogInfo(OSRF_LOG_MARK, "Sending AUTH with username=%s", username);
+
+    // reply is free'd on error
+    if (handle_redis_error(reply)) { return 0; }
+
+    osrfLogDebug(OSRF_LOG_MARK, "Redis AUTH succeeded");
+
+    freeReplyObject(reply);
+
+    return 1;
 }
 
-int client_connect_as_service(transport_client* client, const char* appname) {
+int client_connect_as_service(transport_client* client,
+	const char* appname, const char* username, const char* password) {
 	if (client == NULL || appname == NULL) { return 0; }
     client->bus_id = strdup(appname);
-    return client_connect_with_bus_id(client);
+    return client_connect_with_bus_id(client, username, password);
 }
 
-int client_connect(transport_client* client, const char* appname) {
+int client_connect(transport_client* client,
+	const char* appname, const char* username, const char* password) {
 	if (client == NULL || appname == NULL) { return 0; }
 
     char junk[256];
@@ -71,7 +81,7 @@ int client_connect(transport_client* client, const char* appname) {
 	client->bus_id = strdup(bus_id);
     free(md5);
 
-    return client_connect_with_bus_id(client);
+    return client_connect_with_bus_id(client, username, password);
 }
 
 int client_disconnect(transport_client* client) {
@@ -93,7 +103,7 @@ int client_send_message(transport_client* client, transport_message* msg) {
 
     message_prepare_json(msg);
 
-    osrfLogInternal(OSRF_LOG_MARK, "client_send_message() %s", msg->msg_json);
+    osrfLogDebug(OSRF_LOG_MARK, "client_send_message() %s", msg->msg_json);
 
     redisReply *reply = 
         redisCommand(client->bus, "RPUSH %s %s", msg->recipient, msg->msg_json);

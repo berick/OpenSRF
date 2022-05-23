@@ -342,7 +342,7 @@ sub build_osrf_handle {
     my $self = shift;
 
     my $conf = OpenSRF::Utils::Config->current
-        ->as_hash->{config}->{connections}->{service}->{message_bus};
+        ->as_hash->{connections}->{service}->{message_bus};
 
     my $port = $conf->{port} || 6379;
     my $host = $conf->{host} || '127.0.0.1';
@@ -352,7 +352,7 @@ sub build_osrf_handle {
 
     $self->{osrf_handle} =
         OpenSRF::Transport::Redis::Client->new(
-            bus_id => $self->{service},
+            bus_id => "service:" . $self->{service},
             host => $host,
             port => $port,
             sock => $sock,

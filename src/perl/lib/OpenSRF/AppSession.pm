@@ -207,7 +207,7 @@ sub last_sent_type {
 
 sub get_app_targets {
 	my $app = shift;
-    return ($app);
+    return ("service:$app");
 }
 
 sub stateless {
