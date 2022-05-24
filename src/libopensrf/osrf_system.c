@@ -345,6 +345,12 @@ int osrfSystemBootstrapClientResc(const char* config_file,
 int osrf_system_bootstrap_common(const char* config_file,
 		const char* connection_type, const char* appname, int is_service) {
 
+    if (connection_type == NULL) {
+        osrfLogError(OSRF_LOG_MARK,
+            "osrf_system_bootstrap_common() requires a connection type");
+        return -1;
+    }
+
 	int failure = 0;
 
 	if(osrfSystemGetTransportClient()) {

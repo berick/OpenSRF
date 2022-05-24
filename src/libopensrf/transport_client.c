@@ -60,7 +60,9 @@ int client_connect_with_bus_id(transport_client* client,
 int client_connect_as_service(transport_client* client,
 	const char* appname, const char* username, const char* password) {
 	if (client == NULL || appname == NULL) { return 0; }
-    client->bus_id = strdup(appname);
+    growing_buffer *buf = buffer_init(32);
+    buffer_fadd(buf, "service:%s", appname);
+    client->bus_id = buffer_release(buf);
     return client_connect_with_bus_id(client, username, password);
 }
 
@@ -74,11 +76,20 @@ int client_connect(transport_client* client,
 
     char* md5 = md5sum(junk);
 
-    size_t len = 14 + strlen(appname);
-    char bus_id[len];
-    snprintf(bus_id, len, "%s:%s", appname, md5);
+    growing_buffer *buf = buffer_init(32);
+    buffer_add(buf, "client:");
 
-	client->bus_id = strdup(bus_id);
+    if (strcmp("client", appname) == 0) {
+        // Standalone client
+        buffer_add_n(buf, md5, 12);
+    } else {
+        // Service client client:servicename:junk
+        buffer_fadd(buf, "%s:", appname);
+        buffer_add_n(buf, md5, 12);
+    }
+
+	client->bus_id = buffer_release(buf);
+
     free(md5);
 
     return client_connect_with_bus_id(client, username, password);
@@ -103,7 +114,8 @@ int client_send_message(transport_client* client, transport_message* msg) {
 
     message_prepare_json(msg);
 
-    osrfLogDebug(OSRF_LOG_MARK, "client_send_message() %s", msg->msg_json);
+    osrfLogInternal(OSRF_LOG_MARK, 
+        "client_send_message() to=%s %s", msg->recipient, msg->msg_json);
 
     redisReply *reply = 
         redisCommand(client->bus, "RPUSH %s %s", msg->recipient, msg->msg_json);

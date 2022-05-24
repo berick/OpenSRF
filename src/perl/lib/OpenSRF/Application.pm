@@ -12,6 +12,7 @@ use Time::HiRes qw/time/;
 use OpenSRF::EX qw/:try/;
 use Carp;
 use OpenSRF::Utils::JSON;
+use OpenSRF::Utils::Config;
 
 sub DESTROY{};
 
@@ -22,7 +23,6 @@ $log = 'OpenSRF::Utils::Logger';
 
 our $in_request = 0;
 our @pending_requests;
-our $shared_conf;
 
 sub package {
 	my $self = shift;
@@ -142,8 +142,12 @@ sub handler {
 		my $logdata = "CALL: ".$session->service." $method_name ";
 		my $redact_params = 0;
 		if (@p) {
-			if (ref($shared_conf->shared->log_protect) eq 'ARRAY') {
-				foreach my $match_string (@{$shared_conf->shared->log_protect}) {
+
+			my $conf = OpenSRF::Utils::Config->current->as_hash;
+			my $protect = $conf->{shared}->{log_protect};
+
+			if (ref($protect) eq 'ARRAY') {
+				foreach my $match_string (@$protect) {
 					if ($method_name =~ /^$match_string/) {
 						$redact_params = 1;
 						last;

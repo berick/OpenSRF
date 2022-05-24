@@ -186,7 +186,7 @@ int osrf_prefork_run( const char* appname ) {
 	//char* resc = va_list_to_string( "%s_listener", appname );
 
 	// Make sure that we haven't already booted
-	if( !osrf_system_bootstrap_common(NULL, NULL, appname, 1)) {
+	if( !osrf_system_bootstrap_common(NULL, "service", appname, 1)) {
 		osrfLogError( OSRF_LOG_MARK, "Unable to bootstrap client for osrf_prefork_run()" );
 		//free( resc );
 		return -1;
