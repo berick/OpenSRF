@@ -35,6 +35,7 @@
 #include <string.h>
 #include <signal.h>
 #include <opensrf/utils.h>
+#include <opensrf/osrfConfig.h>
 #include <opensrf/osrf_hash.h>
 #include <opensrf/transport_client.h>
 #include <opensrf/osrf_message.h>
@@ -84,6 +85,7 @@ static osrfHash* stateful_session_cache = NULL;
 // Tracks threads that have active requests in flight.
 // This covers all request types regardless of connected-ness.
 static osrfStringArray* active_threads = NULL;
+static osrfStringArray* public_services = NULL;
 
 // Message on STDIN go into our reusable buffer
 static growing_buffer* stdin_buf = NULL;
@@ -251,6 +253,7 @@ static void rebuild_stdin_buffer() {
 static int shut_it_down(int stat) {
     osrfHashFree(stateful_session_cache);
     osrfStringArrayFree(active_threads);
+    osrfStringArrayFree(public_services);
     buffer_free(stdin_buf);
     osrf_system_shutdown(); // clean XMPP disconnect
     exit(stat);
@@ -271,13 +274,16 @@ static void child_init(int argc, char* argv[]) {
         shut_it_down(1);
     }
 
-	osrf_handle = osrfSystemGetTransportClient();
-	osrfAppSessionSetIngress(WEBSOCKET_INGRESS);
+    osrf_handle = osrfSystemGetTransportClient();
+    osrfAppSessionSetIngress(WEBSOCKET_INGRESS);
 
     stateful_session_cache = osrfNewHash();
     osrfHashSetCallback(stateful_session_cache, release_hash_string);
 
     active_threads = osrfNewStringArray(16);
+    public_services = osrfNewStringArray(16);
+
+    osrfConfigGetValueList(NULL, public_services, "/config/public_services/service");
 
     client_ip = getenv("REMOTE_ADDR");
     osrfLogInfo(OSRF_LOG_MARK, "WS connect from %s", client_ip);
@@ -442,7 +448,11 @@ static void relay_stdin_message(const char* msg_string) {
             snprintf(recipient_buf, len, "service:%s", service);
             recipient = recipient_buf;
 
-            // TODO verify valid public service here
+            if (!osrfStringArrayContains(public_services, service)) {
+                osrfLogWarning(OSRF_LOG_MARK, 
+                    "Request for private or unknown service '%s' forbidden", service);
+                return;
+            }
 
         } else {
             osrfLogWarning(OSRF_LOG_MARK, "WS Unable to determine recipient");
