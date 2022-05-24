@@ -385,7 +385,7 @@ static int prefork_child_init_hook( prefork_child* child ) {
 	osrfSystemIgnoreTransportClient();
 
 	// Connect to Jabber
-	if( !osrf_system_bootstrap_common(NULL, NULL, child->appname, 0)) {
+	if( !osrf_system_bootstrap_common(NULL, "service", child->appname, 0)) {
 		osrfLogError( OSRF_LOG_MARK, "Unable to bootstrap client for osrf_prefork_run()" );
 		//free( resc );
 		return -1;
