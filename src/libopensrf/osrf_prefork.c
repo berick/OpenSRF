@@ -425,7 +425,7 @@ static int prefork_child_process_request( prefork_child* child, char* data ) {
 	if( !client_connected( client )) {
 		osrfSystemIgnoreTransportClient();
 		osrfLogWarning( OSRF_LOG_MARK, "Reconnecting child to opensrf after disconnect..." );
-		if( !osrf_system_bootstrap_common(NULL, NULL, child->appname, 0)) {
+		if( !osrf_system_bootstrap_common(NULL, "service", child->appname, 0)) {
 			osrfLogError( OSRF_LOG_MARK,
 				"Unable to bootstrap client in prefork_child_process_request()" );
 			sleep( 1 );
