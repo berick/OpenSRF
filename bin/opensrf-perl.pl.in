@@ -664,6 +664,7 @@ sub do_reset_bus_auth {
 
         $redis->acl('SETUSER', $username, split(/ /, $permissions));
 
+        $redis->acl('SAVE');
         $redis->quit;
     }
 }
