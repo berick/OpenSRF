@@ -611,13 +611,14 @@ sub load_settings {
         $parser->get_server_config($conf->env->hostname);
 }
 
-# Apply bus access and permissions for accounts defined in the <connections/> block.
-# This will generally be called before we connect to the system, since the 
-# system may not yet have access to connect to the bus.
+# Apply bus access and permissions for accounts defined in the
+# <connections/> block.  This will generally be called before we connect
+# to the system, since the system may not yet have access to connect to
+# the bus.
 sub do_reset_bus_auth {
 
-    my $base_conf = OpenSRF::Utils::Config->load(
-        config_file => $opt_config, nocache => 1)->as_hash
+    my $base_conf = 
+        OpenSRF::Utils::Config->load(config_file => $opt_config)->as_hash
         or die "No suitable configuration found at $opt_config\n";
 
     my $connections = $base_conf->{connections} or
@@ -635,10 +636,9 @@ sub do_reset_bus_auth {
         my $port = $bus_conf->{port};
         my $sock = $bus_conf->{sock};
 
-        # NOTE: This redis connection uses the "default" superuser account
-        # so it can manage access for opensrf accounts.  No ACL commands
-        # occur here (unless we want to give 'default' a password for 
-        # added safety).
+        # This redis connection uses the "default" account, which has
+        # access to all actions and keys so it can manage access for
+        # various opensrf account types.
         my @connect_args = $sock ? (sock => $sock) : (server => "$host:$port");
         my $redis = Redis->new(@connect_args) or 
             die "Cannot connect to Redis instance at @connect_args\n";
@@ -646,13 +646,14 @@ sub do_reset_bus_auth {
         $redis->acl('SETUSER', $username, 'reset');
         $redis->acl('SETUSER', $username, 'on', ">$password");
 
+        # Privileged clients can post message to all services
         my $permissions = '-@all +lpop +blpop +rpush +del ~client:* ~service:*';
 
         if (!$conf->{privileged}) {
             msg("Limiting bus access for non-privileged connection type=$type");
 
-            # Unprivileged connections have access to client: and a subset
-            # of the available services (i.e. public services).
+            # Unprivileged connections have access toa subset of the 
+            # available (i.e. public) services.
             $permissions = '-@all +lpop +blpop +rpush ~client:*';
 
             # Non-privileged connections can only interact with public
@@ -815,6 +816,11 @@ sub do_help {
         and gracefully re-launch drone processes.  The -all variant sends
         the signal to all services.  The non-(-all) variant requires a
         --service.
+
+    --reset-bus-auth
+        Create opensrf accounts in the Redis instance and apply access
+        permissions to each.  Account data is persisted to disk to 
+        survive Redis restarts.
 HELP
 exit;
 }
