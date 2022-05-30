@@ -63,7 +63,7 @@ my $opt_reload_all = 0;
 my $opt_quiet = 0;
 my $opt_diagnostic = 0;
 my $opt_ignore_orphans = 0;
-my $opt_reset_bus_auth = 0;
+my $opt_reset_message_bus = 0;
 my $sclient;
 my @perl_services;
 my @nonperl_services;
@@ -106,7 +106,7 @@ GetOptions(
     'reload' => \$opt_reload,
     'reload-all' => \$opt_reload_all,
     'diagnostic' => \$opt_diagnostic,
-    'reset-bus-auth' => \$opt_reset_bus_auth,
+    'reset-message-bus' => \$opt_reset_message_bus,
     'ignore-orphans' => \$opt_ignore_orphans
 );
 
@@ -615,7 +615,7 @@ sub load_settings {
 # <connections/> block.  This will generally be called before we connect
 # to the system, since the system may not yet have access to connect to
 # the bus.
-sub do_reset_bus_auth {
+sub do_reset_message_bus {
 
     my $base_conf = 
         OpenSRF::Utils::Config->load(config_file => $opt_config)->as_hash
@@ -642,6 +642,10 @@ sub do_reset_bus_auth {
         my @connect_args = $sock ? (sock => $sock) : (server => "$host:$port");
         my $redis = Redis->new(@connect_args) or 
             die "Cannot connect to Redis instance at @connect_args\n";
+
+        # Delete all keys related to opensrf message delivery
+        my @keys = ($redis->keys('service:*'), $redis->keys('client:*'));
+        $redis->del($_) for @keys;
 
         $redis->acl('SETUSER', $username, 'reset');
         $redis->acl('SETUSER', $username, 'on', ">$password");
@@ -817,10 +821,9 @@ sub do_help {
         the signal to all services.  The non-(-all) variant requires a
         --service.
 
-    --reset-bus-auth
-        Create opensrf accounts in the Redis instance and apply access
-        permissions to each.  Account data is persisted to disk to 
-        survive Redis restarts.
+    --reset-message-bus
+        Clear all messages / data from the message bus, create opensrf
+        permissions to each.  Account data is then persisted to disk.
 HELP
 exit;
 }
@@ -838,7 +841,7 @@ do_init() and verify_services($opt_service) if
         not defined $opt_service or $opt_service ne 'router'
     );
 
-do_reset_bus_auth() if $opt_reset_bus_auth;
+do_reset_message_bus() if $opt_reset_message_bus;
 
 # starting services.  do_init() handled above
 do_start($opt_service) if $opt_start;
@@ -878,7 +881,7 @@ do_diagnostic() if $opt_diagnostic;
 
 # show help if no action was requested
 do_help() if $opt_help or not (
-    $opt_reset_bus_auth or
+    $opt_reset_message_bus or
     $opt_start or 
     $opt_start_all or 
     $opt_start_services or 
