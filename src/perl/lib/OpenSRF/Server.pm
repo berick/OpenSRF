@@ -725,8 +725,8 @@ sub run {
         my $orig_name = $0;
         $0 = "$0*";
 
-        # Discard extraneous data from the jabber socket
-        if(!$network->flush_socket()) {
+        # Discard extraneous data from our direct message bus ID.
+        if (!$network->flush_socket()) {
             $logger->error("server: network disconnected!  child dropping request and exiting: $data");
             exit;
         }

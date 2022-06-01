@@ -611,10 +611,10 @@ sub load_settings {
         $parser->get_server_config($conf->env->hostname);
 }
 
-# Apply bus access and permissions for accounts defined in the
-# <connections/> block.  This will generally be called before we connect
-# to the system, since the system may not yet have access to connect to
-# the bus.
+# Clear the service: and client: queues of lingering messages.  Apply
+# bus access and permissions for accounts defined in the <connections/>
+# block.  This will generally be called before we connect to the system,
+# since the system may not yet have access to connect to the bus.
 sub do_reset_message_bus {
 
     my $base_conf = 
@@ -650,7 +650,9 @@ sub do_reset_message_bus {
         $redis->acl('SETUSER', $username, 'reset');
         $redis->acl('SETUSER', $username, 'on', ">$password");
 
-        # Privileged clients can post message to all services
+        # Privileged clients can post message to all services and perform
+        # delete operations to clear their own client: enpoints from 
+        # (i.e. flush socket).
         my $permissions = '-@all +lpop +blpop +rpush +del ~client:* ~service:*';
 
         if (!$conf->{privileged}) {
