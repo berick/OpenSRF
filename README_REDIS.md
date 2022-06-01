@@ -21,6 +21,26 @@ sudo apt install redis-server libredis-perl libhiredis-dev
 
 ```
 
+### Disable Redis Disk Persistence
+
+Optional but recommended since disk persistence adds unnecessary overhead.
+
+#### Edit /etc/redis/redis.conf and un-comment the 'save ""' line:
+
+```conf
+# Snapshotting can be completely disabled with a single empty string argument
+# as in following example:
+#
+save ""
+#
+```
+
+#### Restart Redis
+
+```sh
+sudo systemctl restart redis
+```
+
 ### Install OpenSRF Config and Initialize/Reset Message Bus
 
 ```sh

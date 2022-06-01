@@ -12,7 +12,7 @@ use Time::HiRes qw/time/;
 # hitting opensrf.settings with lots of requests lead to failures.
 my $test_service = "open-ils.storage";
 
-my $iterations = 1000;
+my $iterations = 500;
 my $parallel = 3;
 
 my $small_echo_data = <<TEXT;
