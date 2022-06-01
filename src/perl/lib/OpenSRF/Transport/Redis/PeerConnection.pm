@@ -40,9 +40,10 @@ sub new {
     my $username = $conf->{username};
     my $password = $conf->{password};
 
-    my $bus_id = "client:$app:" . substr(md5_hex($$ . time . rand($$)), 0, 12);
+    my $bus_id = $app eq 'client' ? 'client:' : "client:$app:";
+    $bus_id .= substr(md5_hex($$ . time . rand($$)), 0, 12);
 
-    $logger->debug("PeerConnection::new() using username=$username bus_id=$bus_id");
+    $logger->debug("PeerConnection::new() using app=$app username=$username bus_id=$bus_id");
 
     my $self = $class->SUPER::new(
         username => $username,
