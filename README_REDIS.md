@@ -25,7 +25,7 @@ sudo apt install redis-server libredis-perl libhiredis-dev
 
 Optional but recommended since disk persistence adds unnecessary overhead.
 
-#### Edit /etc/redis/redis.conf and un-comment the *# save ""* line:
+#### Edit /etc/redis/redis.conf and un-comment the <code># save ""</code> line:
 
 ```conf
 # Snapshotting can be completely disabled with a single empty string argument
