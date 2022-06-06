@@ -33,9 +33,9 @@ sub echoloop {
 
     my $start = time;
     for (0..$iterations) {
-        my $resp = $ses->request('opensrf.system.echo', $data)->gather(1);
+        my $resp = $ses->request('opensrf.system.echo', "$data$_")->gather(1);
 
-        if ($resp eq $data) {
+        if ($resp eq "$data$_") {
             print "+";
         } else {
             warn "Got bad data: $resp\n";
