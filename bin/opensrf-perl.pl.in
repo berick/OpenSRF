@@ -624,28 +624,36 @@ sub do_reset_message_bus {
     my $connections = $base_conf->{connections} or
         die "No connection configuration found in $opt_config\n";
 
+    my $redis;
+
     for my $type (keys %$connections) {
         msg("Applying bus access for connection type: $type");
 
         my $conf = $connections->{$type};
         my $bus_conf = $conf->{message_bus};
 
+        if (!$redis) {
+            # Though the connection details may vary by connection,
+            # we assume all connections ultimately point to the same
+            # Redis instance.  
+            my $host = $bus_conf->{host};
+            my $port = $bus_conf->{port};
+            my $sock = $bus_conf->{sock};
+
+            # This redis connection uses the "default" account, which has
+            # access to all actions and keys so it can manage access for
+            # various opensrf account types.
+            my @connect_args = $sock ? (sock => $sock) : (server => "$host:$port");
+
+            $redis = Redis->new(@connect_args) or 
+                die "Cannot connect to Redis instance at @connect_args\n";
+
+            # Clear all the data
+            $redis->flushall;
+        }
+
         my $username = $bus_conf->{username};
         my $password = $bus_conf->{password};
-        my $host = $bus_conf->{host};
-        my $port = $bus_conf->{port};
-        my $sock = $bus_conf->{sock};
-
-        # This redis connection uses the "default" account, which has
-        # access to all actions and keys so it can manage access for
-        # various opensrf account types.
-        my @connect_args = $sock ? (sock => $sock) : (server => "$host:$port");
-        my $redis = Redis->new(@connect_args) or 
-            die "Cannot connect to Redis instance at @connect_args\n";
-
-        # Delete all keys related to opensrf message delivery
-        my @keys = ($redis->keys('service:*'), $redis->keys('client:*'));
-        $redis->del($_) for @keys;
 
         $redis->acl('SETUSER', $username, 'reset');
         $redis->acl('SETUSER', $username, 'on', ">$password");
@@ -824,8 +832,8 @@ sub do_help {
         --service.
 
     --reset-message-bus
-        Clear all messages / data from the message bus, create opensrf
-        permissions to each.  Account data is then persisted to disk.
+        Clear ALL data from the message bus, create opensrf accounts w/ 
+        permission to access message queues.  Account data is persisted to disk.
 HELP
 exit;
 }
