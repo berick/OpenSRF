@@ -627,15 +627,13 @@ sub do_reset_message_bus {
     my $redis;
 
     for my $type (keys %$connections) {
-        msg("Applying bus access for connection type: $type");
-
         my $conf = $connections->{$type};
         my $bus_conf = $conf->{message_bus};
 
         if (!$redis) {
-            # Though the connection details may vary by connection,
-            # we assume all connections ultimately point to the same
-            # Redis instance.  
+            # Though connection details may vary by connection, we
+            # assume all connections in a single bootstratp config
+            # ultimately point to the same Redis instance.
             my $host = $bus_conf->{host};
             my $port = $bus_conf->{port};
             my $sock = $bus_conf->{sock};
@@ -649,8 +647,11 @@ sub do_reset_message_bus {
                 die "Cannot connect to Redis instance at @connect_args\n";
 
             # Clear all the data
+            msg("Clearing all data from message bus: @connect_args");
             $redis->flushall;
         }
+
+        msg("Applying bus access for connection type: $type");
 
         my $username = $bus_conf->{username};
         my $password = $bus_conf->{password};
@@ -679,9 +680,10 @@ sub do_reset_message_bus {
 
         $redis->acl('SETUSER', $username, split(/ /, $permissions));
 
-        $redis->acl('SAVE');
-        $redis->quit;
     }
+
+    $redis->acl('SAVE');
+    $redis->quit;
 }
 
 sub msg {
