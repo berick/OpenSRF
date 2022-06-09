@@ -618,7 +618,7 @@ sub load_settings {
 sub do_reset_message_bus {
 
     my $base_conf = 
-        OpenSRF::Utils::Config->load(config_file => $opt_config)->as_hash
+        OpenSRF::Utils::Config->load(config_file => $opt_config, nocache => 1)->as_hash
         or die "No suitable configuration found at $opt_config\n";
 
     my $connections = $base_conf->{connections} or
