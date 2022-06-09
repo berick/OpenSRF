@@ -682,7 +682,6 @@ sub do_reset_message_bus {
 
     }
 
-    $redis->acl('SAVE');
     $redis->quit;
 }
 
