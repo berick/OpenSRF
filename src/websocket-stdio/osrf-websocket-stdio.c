@@ -186,20 +186,18 @@ int main(int argc, char* argv[]) {
                 "WS select() failed with [%s]. Exiting", strerror(errno));
 
             shut_it_down(1);
-        }
 
-        if (sel_resp > 0) {
+        } else if (sel_resp > 0) {
 
             if (FD_ISSET(stdin_no, &fds)) {
                 read_from_stdin();
                 read_from_osrf();
             }
 
-            /*
-            if (FD_ISSET(osrf_no, &fds)) {
-                read_from_osrf();
-            }
-            */
+        } else if (active_threads->size > 0) {
+            // Nothing pulled from the websocket, but we still have
+            // active osrf request.  See if any new responses have arrived.
+            read_from_osrf();
         }
 
         if (shutdown_requested) {
