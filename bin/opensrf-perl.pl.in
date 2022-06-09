@@ -839,6 +839,8 @@ HELP
 exit;
 }
 
+do_reset_message_bus() if $opt_reset_message_bus;
+
 # we do not verify services for stop/signal actions, since those may
 # legitimately be used against services not (or no longer) configured
 # to run on the selected host.
@@ -851,8 +853,6 @@ do_init() and verify_services($opt_service) if
     $opt_restart_services) and (
         not defined $opt_service or $opt_service ne 'router'
     );
-
-do_reset_message_bus() if $opt_reset_message_bus;
 
 # starting services.  do_init() handled above
 do_start($opt_service) if $opt_start;
