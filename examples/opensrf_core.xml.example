@@ -3,14 +3,28 @@
 
   <connections>
     <service>
-      <!-- can we talk to private services? -->
+
+      <!-- 
+        Can this connection talk to private services?
+      -->
       <privileged>true</privileged>
+
       <message_bus>
         <host>127.0.0.1</host>
         <port>6379</port>
         <username>opensrf@private</username>
         <password>password</password>
+
+        <!-- 
+          Max number of un-acknowledged messages Redis will retain in the 
+          message stream before discarding the oldest.  This value needs
+          to be *something* or queues will grow unbounded,  service-level
+          request queues especially. 
+        -->
+        <max_queue_size>1000</max_queue_size>
+
       </message_bus>
+
       <logfile>syslog</logfile>
       <syslog>local0</syslog>
       <actlog>local1</actlog>

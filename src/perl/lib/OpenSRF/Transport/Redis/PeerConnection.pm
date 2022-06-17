@@ -39,19 +39,23 @@ sub new {
     my $sock = $conf->{sock};
     my $username = $conf->{username};
     my $password = $conf->{password};
+    my $maxlen = $conf->{max_queue_size} || 1000;
 
-    my $bus_id = $app eq 'client' ? 'client:' : "client:$app:";
-    $bus_id .= substr(md5_hex($$ . time . rand($$)), 0, 12);
+    my $stream_name = $app eq 'client' ? 'client:' : "client:$app:";
+    $stream_name .= substr(md5_hex($$ . time . rand($$)), 0, 12);
 
-    $logger->debug("PeerConnection::new() using app=$app username=$username bus_id=$bus_id");
+    $logger->debug("PeerConnection::new() ".
+        "using app=$app username=$username stream_name=$stream_name");
 
     my $self = $class->SUPER::new(
-        username => $username,
-        password => $password,
         host => $host,
         port => $port,
         sock => $sock,
-        bus_id => $bus_id
+        username => $username,
+        password => $password,
+        stream_name => $stream_name,
+        consumer_name => $stream_name,
+        max_queue_size => $maxlen
     );
 
     bless($self, $class);

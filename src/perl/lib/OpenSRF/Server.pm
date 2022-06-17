@@ -23,6 +23,7 @@ use OpenSRF::Utils::SettingsClient;
 use OpenSRF::Utils::Logger qw($logger);
 use OpenSRF::DomainObject::oilsResponse qw/:status/;
 use OpenSRF::Transport::SlimJabber::Client;
+use Digest::MD5 qw(md5_hex);
 use Encode;
 use POSIX qw/:sys_wait_h :errno_h/;
 use Fcntl qw(F_GETFL F_SETFL O_NONBLOCK);
@@ -350,9 +351,14 @@ sub build_osrf_handle {
     my $username = $conf->{username};
     my $password = $conf->{password};
 
+    # Every listener needs a unique consumer name.
+    my $consumer_name = 'service:' . 
+        $self->{service} . substr(md5_hex($$ . time . rand($$)), 0, 12);
+
     $self->{osrf_handle} =
         OpenSRF::Transport::Redis::Client->new(
-            bus_id => "service:" . $self->{service},
+            stream_name => "service:" . $self->{service},
+            consumer_name => $consumer_name,
             host => $host,
             port => $port,
             sock => $sock,

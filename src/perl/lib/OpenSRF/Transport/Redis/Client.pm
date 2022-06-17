@@ -28,10 +28,17 @@ sub params {
 
 sub disconnect {
     my $self = shift;
-    if ($self->redis) {
-        $self->redis->quit;
-        delete $self->{redis};
+    return unless $self->redis;
+
+    # Delete our consumer group if we are a client.
+    if ($self->stream_name =~ /^client:/) {
+        eval { # can get mad if the group's not there
+            $self->redis->xgroup(destroy => $self->stream_name => $self->stream_name);
+        };
     }
+
+    $self->redis->quit;
+    delete $self->{redis};
 }
 
 sub gather { 
@@ -62,7 +69,7 @@ sub send {
     $msg->body(OpenSRF::Utils::JSON->JSON2perl($msg->body));
 
     $msg->osrf_xid($logger->get_osrf_xid);
-    $msg->from($self->bus_id);
+    $msg->from($self->stream_name);
 
     $logger->internal("send() thread=" . $msg->thread);
 
@@ -70,7 +77,17 @@ sub send {
 
     $logger->debug("send(): to=" . $msg->to . " : $msg_json");
 
-    $self->redis->rpush($msg->to, $msg_json);
+    $self->redis->xadd(
+        $msg->to,                   # recipient == stream name
+        'MAXLEN', 
+        '~',                        # maxlen-ish
+        $self->max_queue_size,
+        '*',                        # any ol' message ID is fine
+        'message',                  # gotta call it something 
+        $msg_json
+    );
+
+    #$self->redis->rpush($msg->to, $msg_json);
 }
 
 sub initialize {
@@ -81,10 +98,11 @@ sub initialize {
     my $sock = $self->params->{sock} || ''; 
     my $username = $self->params->{username}; 
     my $password = $self->params->{password}; 
-    my $bus_id = $self->params->{bus_id};
+    my $stream_name = $self->params->{stream_name};
+    my $consumer_name = $self->params->{consumer_name};
 
     $logger->debug("Redis client connecting: ".
-        "host=$host port=$port sock=$sock username=$username bus_id=$bus_id");
+        "host=$host port=$port sock=$sock username=$username stream_name=$stream_name");
 
     return 1 if $self->redis; # already connected
 
@@ -106,17 +124,43 @@ sub initialize {
         return 0;
     }
 
-    $logger->debug("Auth'ed with Redis as $username OK : bus_id=$bus_id");
+    $logger->debug("Auth'ed with Redis as $username OK : stream_name=$stream_name");
 
-    $self->bus_id($bus_id);
+    eval { 
+        # This gets mad when a stream / group already exists, but 
+        # Listeners share a stream/group name so dupes are possible.
+
+        $self->redis->xgroup(   
+            'create',
+            $stream_name,    # stream name
+            $stream_name,    # group name
+            '$',        # only receive new messages
+            'mkstream'  # create this stream if it's not there.
+        );
+    };
+
+    $self->stream_name($stream_name);
+    $self->consumer_name($consumer_name);
 
     return $self;
 }
 
-sub bus_id {
-    my ($self, $bus_id) = @_;
-    $self->{bus_id} = $bus_id if $bus_id;
-    return $self->{bus_id};
+sub max_queue_size {
+    my ($self, $max_queue_size) = @_;
+    $self->{max_queue_size} = $max_queue_size if $max_queue_size;
+    return $self->{max_queue_size};
+}
+
+sub stream_name {
+    my ($self, $stream_name) = @_;
+    $self->{stream_name} = $stream_name if $stream_name;
+    return $self->{stream_name};
+}
+
+sub consumer_name {
+    my ($self, $consumer_name) = @_;
+    $self->{consumer_name} = $consumer_name if $consumer_name;
+    return $self->{consumer_name};
 }
 
 
@@ -149,38 +193,44 @@ sub process {
 sub recv {
     my ($self, $timeout) = @_;
 
-    my $packet;
+    $logger->debug("server: watching for content at " . $self->stream_name);
 
-    $logger->debug("server: watching for content at " . $self->bus_id);
+    my @block = (BLOCK => $timeout) if $timeout;
 
-    if ($timeout == 0) {
-        # Non-blocking list pop
-        $packet = $self->redis->lpop($self->bus_id);
-
-    } else {
-        # In Redis, timeout 0 means wait indefinitely
-        $packet = $self->redis->blpop($self->bus_id, $timeout == -1 ? 0 : $timeout);
-    }
+    my $packet = $self->redis->xreadgroup(
+        GROUP => $self->stream_name,
+        $self->consumer_name,
+        COUNT => 1,
+        STREAMS => $self->stream_name,
+        '>' # new messages only
+    );      
 
     # Timed out waiting for data.
     return undef unless defined $packet;
 
-    my $json = ref $packet eq 'ARRAY' ? $packet->[1] : $packet;
+    # TODO make this more self-documenting.  also, too brittle?
+    my $container = $packet->[0]->[1]->[0];
+    my $bus_id = $container->[0];
+    my $json = $container->[1]->[1];
 
     $logger->internal("recv() $json");
 
+    # TODO putting this here for now -- it may live somewhere else.
+    # Ideally this could happen out of band.
+    # Note if we don't ACK utnil after successfully processing each
+    # message, a malformed message will stay in the pending list.
+    # Consider options.
+    $self->redis->xack($self->stream_name, $self->stream_name, $bus_id);
 
     my $msg = OpenSRF::Transport::Redis::Message->new(json => $json);
+    $msg->bus_id($bus_id);
 
     return undef unless $msg;
 
     $logger->internal("recv() thread=" . $msg->thread);
 
-    # TODO
-    # The upper layers assume the body is a JSON string.
-    # Teach the upper layers to treat the body as a part of the 
-    # JSON object instead and we can avoid an extra round of
-    # JSON encode/decode with each message
+    # The message body is doubly encoded as JSON to, among other things,
+    # support message chunking.
     $msg->body(OpenSRF::Utils::JSON->perl2JSON($msg->body));
 
     return $msg;
@@ -191,7 +241,7 @@ sub flush_socket {
     my $self = shift;
     return 0 unless $self->redis;
     # Remove any messages directed to me from the bus.
-    $self->redis->del($self->bus_id);
+    $self->redis->del($self->stream_name);
     return 1;
 }
 
