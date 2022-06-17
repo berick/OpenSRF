@@ -35,6 +35,8 @@ sub disconnect {
         eval { # can get mad if the group's not there
             $self->redis->xgroup(destroy => $self->stream_name => $self->stream_name);
         };
+        # Delete our stream as well
+        $self->redis->del($self->stream_name);
     }
 
     $self->redis->quit;
@@ -77,6 +79,18 @@ sub send {
 
     $logger->debug("send(): to=" . $msg->to . " : $msg_json");
 
+    my @args = (
+        $msg->to,
+        'MAXLEN',
+        '~',
+        $self->max_queue_size,
+        '*',
+        'message',
+        'msg-json'
+    );
+
+    $logger->internal("send() args: @args");
+
     $self->redis->xadd(
         $msg->to,                   # recipient == stream name
         'MAXLEN', 
@@ -100,6 +114,7 @@ sub initialize {
     my $password = $self->params->{password}; 
     my $stream_name = $self->params->{stream_name};
     my $consumer_name = $self->params->{consumer_name};
+    my $max_queue_size = $self->params->{max_queue_size};
 
     $logger->debug("Redis client connecting: ".
         "host=$host port=$port sock=$sock username=$username stream_name=$stream_name");
@@ -132,15 +147,20 @@ sub initialize {
 
         $self->redis->xgroup(   
             'create',
-            $stream_name,    # stream name
-            $stream_name,    # group name
-            '$',        # only receive new messages
-            'mkstream'  # create this stream if it's not there.
+            $stream_name,   # stream name
+            $stream_name,   # group name
+            '$',            # only receive new messages
+            'mkstream'      # create this stream if it's not there.
         );
     };
 
+    if ($@) {
+        $logger->info("XGROUP CREATE returned : $@");
+    }
+
     $self->stream_name($stream_name);
     $self->consumer_name($consumer_name);
+    $self->max_queue_size($max_queue_size);
 
     return $self;
 }
@@ -195,11 +215,18 @@ sub recv {
 
     $logger->debug("server: watching for content at " . $self->stream_name);
 
-    my @block = (BLOCK => $timeout) if $timeout;
+    my @block;
+    if ($timeout) {
+        # 0 means block indefinitely in Redis
+        $timeout = 0 if $timeout == -1;
+        $timeout *= 1000; # milliseconds
+        @block = (BLOCK => $timeout);
+    }
 
     my $packet = $self->redis->xreadgroup(
         GROUP => $self->stream_name,
         $self->consumer_name,
+        @block,
         COUNT => 1,
         STREAMS => $self->stream_name,
         '>' # new messages only
@@ -241,7 +268,7 @@ sub flush_socket {
     my $self = shift;
     return 0 unless $self->redis;
     # Remove any messages directed to me from the bus.
-    $self->redis->del($self->stream_name);
+    #$self->redis->del($self->stream_name);
     return 1;
 }
 
