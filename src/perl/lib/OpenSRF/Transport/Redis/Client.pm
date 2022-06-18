@@ -60,50 +60,6 @@ sub connected {
     return $self->tcp_connected;
 }
 
-
-sub send {
-    my $self = shift;
-    my $msg = OpenSRF::Transport::Redis::Message->new(@_);
-    
-    # TODO
-    # The upper layers turn the body into a JSON string.
-    # Perl-ify it here so the final message is an un-nested JSON string.
-    $msg->body(OpenSRF::Utils::JSON->JSON2perl($msg->body));
-
-    $msg->osrf_xid($logger->get_osrf_xid);
-    $msg->from($self->stream_name);
-
-    $logger->internal("send() thread=" . $msg->thread);
-
-    my $msg_json = $msg->to_json;
-
-    $logger->debug("send(): to=" . $msg->to . " : $msg_json");
-
-    my @args = (
-        $msg->to,
-        'MAXLEN',
-        '~',
-        $self->max_queue_size,
-        '*',
-        'message',
-        'msg-json'
-    );
-
-    $logger->internal("send() args: @args");
-
-    $self->redis->xadd(
-        $msg->to,                   # recipient == stream name
-        'MAXLEN', 
-        '~',                        # maxlen-ish
-        $self->max_queue_size,
-        '*',                        # any ol' message ID is fine
-        'message',                  # gotta call it something 
-        $msg_json
-    );
-
-    #$self->redis->rpush($msg->to, $msg_json);
-}
-
 sub initialize {
     my $self = shift;
 
@@ -189,6 +145,32 @@ sub construct {
     $class->peer_handle($class->new($app, $context)->initialize);
 }
 
+sub send {
+    my $self = shift;
+    my $msg = OpenSRF::Transport::Redis::Message->new(@_);
+    
+    $msg->body(OpenSRF::Utils::JSON->JSON2perl($msg->body));
+
+    $msg->osrf_xid($logger->get_osrf_xid);
+    $msg->from($self->stream_name);
+
+    my $msg_json = $msg->to_json;
+
+    $logger->internal("send(): to=" . $msg->to . " : $msg_json");
+
+    $self->redis->xadd(
+        $msg->to,                   # recipient == stream name
+        'MAXLEN', 
+        '~',                        # maxlen-ish
+        $self->max_queue_size,
+        '*',                        # let Redis generate the ID
+        'message',                  # gotta call it something 
+        $msg_json
+    );
+}
+
+
+
 
 sub process {
     my ($self, $timeout) = @_;
@@ -266,9 +248,8 @@ sub recv {
 
 sub flush_socket {
     my $self = shift;
-    return 0 unless $self->redis;
-    # Remove any messages directed to me from the bus.
-    #$self->redis->del($self->stream_name);
+    # Remove all messages from the stream
+    $self->redis->xtrim($self->stream_name, 'MAXLEN', 0);
     return 1;
 }
 
