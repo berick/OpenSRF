@@ -662,18 +662,14 @@ sub do_reset_message_bus {
         # Privileged clients can post message to all services and perform
         # delete operations to clear their own client: enpoints from 
         # (i.e. flush socket).
-        #my $permissions = '-@all +lpop +blpop +rpush +del ~client:* ~service:*';
+        my $permissions = '-@all +xgroup +xadd +xreadgroup +xack +xtrim +del ~client:* ~service:*';
         
-        # XXX TODO
-        # Skipping perms for now until we get things working.
-        my $permissions = '~* &* +@all';
-
         if (!$conf->{privileged}) {
             msg("Limiting bus access for non-privileged connection type=$type");
 
             # Unprivileged connections have access toa subset of the 
             # available (i.e. public) services.
-            $permissions = '-@all +lpop +blpop +rpush ~client:*';
+            $permissions = '-@all +xgroup +xadd +xreadgroup +xack +xtrim +del ~client:*';
 
             # Non-privileged connections can only interact with public
             # service bus endpoints.

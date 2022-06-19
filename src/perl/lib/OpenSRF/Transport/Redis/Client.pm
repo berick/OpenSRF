@@ -30,12 +30,9 @@ sub disconnect {
     my $self = shift;
     return unless $self->redis;
 
-    # Delete our consumer group if we are a client.
     if ($self->stream_name =~ /^client:/) {
-        eval { # can get mad if the group's not there
-            $self->redis->xgroup(destroy => $self->stream_name => $self->stream_name);
-        };
-        # Delete our stream as well
+        # Delete our stream since we're the only one using it.  Deleting
+        # the stream also deletes our consumer group.
         $self->redis->del($self->stream_name);
     }
 
