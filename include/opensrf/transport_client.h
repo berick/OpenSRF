@@ -31,7 +31,18 @@ struct transport_client_struct {
 	transport_message* msg_q_head;   /**< Head of message queue */
 	transport_message* msg_q_tail;   /**< Tail of message queue */
     redisContext* bus;
-    char* bus_id;
+
+    // Our communication stream.
+    // This will be unique for all connections except service-level
+    // (Listener) connections.
+    char* stream_name;
+
+    // Our unique name.
+    // Will match the unique stream_name for non-service-level connections.
+    char* consumer_name;
+
+    int max_queue_size;
+
     int port;
     char* unix_path;
 	int error;                       /**< Boolean: true if an error has occurred */
@@ -42,7 +53,7 @@ typedef struct transport_client_struct transport_client;
 
 transport_client* client_init( const char* server, int port, const char* unix_path );
 
-int client_connect_with_bus_id(transport_client* client, const char* username, const char* password); 
+int client_connect_with_stream_name(transport_client* client, const char* username, const char* password); 
 int client_connect_as_service(transport_client* client, 
     const char* appname, const char* username, const char* password); 
 int client_connect(transport_client* client, 

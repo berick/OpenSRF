@@ -1,6 +1,6 @@
 #include <opensrf/transport_client.h>
 
-static int handle_redis_error(redisReply* reply);
+static int handle_redis_error(redisReply* reply, char* command, ...);
 
 transport_client* client_init(const char* server, int port, const char* unix_path) {
 
@@ -11,8 +11,10 @@ transport_client* client_init(const char* server, int port, const char* unix_pat
 
 	/* start with an empty message queue */
 	client->bus = NULL;
-	client->bus_id = NULL;
+	client->stream_name = NULL;
+	client->consumer_name = NULL;
 
+    client->max_queue_size = 1000; // TODO pull from config
     client->port = port;
     client->host = server ? strdup(server) : NULL;
     client->unix_path = unix_path ? strdup(unix_path) : NULL;
@@ -21,12 +23,17 @@ transport_client* client_init(const char* server, int port, const char* unix_pat
 	return client;
 }
 
-int client_connect_with_bus_id(transport_client* client, 
+int client_connect_with_stream_name(transport_client* client, 
 	const char* username, const char* password) {
 
-    osrfLogDebug(OSRF_LOG_MARK, 
-        "Transport client connecting with bus id: %s; host=%s; port=%d; unix_path=%s", 
-        client->bus_id, client->host, client->port, client->unix_path);
+    osrfLogDebug(OSRF_LOG_MARK, "Transport client connecting with bus "
+        "stream=%s; consumer=%s; host=%s; port=%d; unix_path=%s", 
+        client->stream_name, 
+        client->consumer_name,
+        client->host, 
+        client->port, 
+        client->unix_path
+    );
 
     // TODO use redisConnectWithTimeout so we can verify connection.
     if (client->host && client->port) {
@@ -42,15 +49,23 @@ int client_connect_with_bus_id(transport_client* client,
 
     osrfLogInfo(OSRF_LOG_MARK, "Connected to Redis instance OK");
 
-    redisReply *reply = 
-        redisCommand(client->bus, "AUTH %s %s", username, password);
-
     osrfLogInfo(OSRF_LOG_MARK, "Sending AUTH with username=%s", username);
 
-    // reply is free'd on error
-    if (handle_redis_error(reply)) { return 0; }
+    redisReply *reply = redisCommand(client->bus, "AUTH %s %s", username, password);
+
+    if (handle_redis_error(reply, "AUTH %s %s", username, password)) { return 0; }
 
     osrfLogDebug(OSRF_LOG_MARK, "Redis AUTH succeeded");
+
+    freeReplyObject(reply);
+
+    // Create our stream + consumer group.
+    // This will produce an error when the group already exists, which
+    // will happen with service-level groups.
+    reply = redisCommand(client->bus, 
+        "XGROUP CREATE %s %s $ mkstream", 
+        client->stream_name, client->stream_name
+    );
 
     freeReplyObject(reply);
 
@@ -62,8 +77,24 @@ int client_connect_as_service(transport_client* client,
 	if (client == NULL || appname == NULL) { return 0; }
     growing_buffer *buf = buffer_init(32);
     buffer_fadd(buf, "service:%s", appname);
-    client->bus_id = buffer_release(buf);
-    return client_connect_with_bus_id(client, username, password);
+
+    // strdup the content, leave the buf alive.
+    client->stream_name = buffer_data(buf);
+
+    // Add some random stuff to the end of the consumer name, which
+    // has to be unuique per client.
+    char junk[256];
+	snprintf(junk, sizeof(junk), 
+        "%f.%d%ld", get_timestamp_millis(), (int) time(NULL), (long) getpid());
+
+    char* md5 = md5sum(junk);
+
+    buffer_add(buf, ":");
+    buffer_add_n(buf, md5, 12);
+
+    client->consumer_name = buffer_release(buf);
+
+    return client_connect_with_stream_name(client, username, password);
 }
 
 int client_connect(transport_client* client,
@@ -88,15 +119,26 @@ int client_connect(transport_client* client,
         buffer_add_n(buf, md5, 12);
     }
 
-	client->bus_id = buffer_release(buf);
+	client->stream_name = buffer_release(buf);
+	client->consumer_name = strdup(client->stream_name);
 
     free(md5);
 
-    return client_connect_with_bus_id(client, username, password);
+    return client_connect_with_stream_name(client, username, password);
 }
 
 int client_disconnect(transport_client* client) {
 	if (client == NULL || client->bus == NULL) { return 0; }
+
+    if (strncmp(client->stream_name, "client:", 7) == 0) {
+        // Delete our stream on disconnect if we are a client.
+        // No point in letting it linger.
+        redisReply *reply = 
+            redisCommand(client->bus, "DEL %s", client->stream_name);
+
+        freeReplyObject(reply);
+    }
+
     redisFree(client->bus);
     client->bus = NULL;
     return 1;
@@ -110,17 +152,26 @@ int client_send_message(transport_client* client, transport_message* msg) {
 	if (client == NULL || client->error) { return -1; }
 
 	if (msg->sender) { free(msg->sender); }
-	msg->sender = strdup(client->bus_id);
+	msg->sender = strdup(client->stream_name);
 
     message_prepare_json(msg);
 
     osrfLogInternal(OSRF_LOG_MARK, 
         "client_send_message() to=%s %s", msg->recipient, msg->msg_json);
 
-    redisReply *reply = 
-        redisCommand(client->bus, "RPUSH %s %s", msg->recipient, msg->msg_json);
+    redisReply *reply = redisCommand(client->bus,
+        "XADD %s MAXLEN ~ %d * message %s",
+        msg->recipient, 
+        client->max_queue_size,
+        msg->msg_json
+    );
 
-    if (handle_redis_error(reply)) { return -1; }
+    if (handle_redis_error(reply, 
+        "XADD %s MAXLEN ~ %d * message %s",
+        msg->recipient, 
+        client->max_queue_size,
+        msg->msg_json)
+    ) { return -1; }
 
     osrfLogInternal(OSRF_LOG_MARK, "client_send_message() send completed");
 
@@ -129,13 +180,14 @@ int client_send_message(transport_client* client, transport_message* msg) {
     return 0;
 }
 
-// Returns true if if the reply was NULL or an error.
-// If the reply is an error, the reply is FREEd.
-static int handle_redis_error(redisReply* reply) {
+// Returns the reply on success, NULL on error
+// On error, the reply is freed.
+static int handle_redis_error(redisReply *reply, char* command, ...) {
 
     if (reply == NULL || reply->type == REDIS_REPLY_ERROR) {
+	    VA_LIST_TO_STRING(command);
         char* err = reply == NULL ? "" : reply->str;
-        osrfLogError(OSRF_LOG_MARK, "Error in redisCommand(): %s", err);
+        osrfLogError(OSRF_LOG_MARK, "Error in redisCommand(): %s : %s", err, VA_BUF);
         freeReplyObject(reply);
         return 1;
     }
@@ -153,49 +205,102 @@ static int handle_redis_error(redisReply* reply) {
 char* recv_one_chunk(transport_client* client, int timeout) {
 	if (client == NULL || client->bus == NULL) { return NULL; }
 
-    size_t len = 0;
-    char command_buf[256];
+    redisReply *reply, *tmp;
+    char* json = NULL;
+    char* msg_id = NULL;
 
-    if (timeout == 0) { // Non-blocking list pop
+    if (timeout != 0) {
+        if (timeout == -1) {
+            // Redis timeout 0 means block indefinitely
+            timeout = 0;
+        } else {
+            // Milliseconds
+            timeout *= 1000;
+        }
 
-        len = snprintf(command_buf, 256, "LPOP %s", client->bus_id);
+        reply = redisCommand(client->bus, 
+            "XREADGROUP GROUP %s %s BLOCK %d COUNT 1 STREAMS %s >",
+            client->stream_name,
+            client->consumer_name,
+            timeout,
+            client->stream_name
+        );
 
     } else {
-        
-        if (timeout < 0) { // Block indefinitely
 
-            len = snprintf(command_buf, 256, "BLPOP %s 0", client->bus_id);
+        reply = redisCommand(client->bus, 
+            "XREADGROUP GROUP %s %s COUNT 1 STREAMS %s >",
+            client->stream_name,
+            client->consumer_name,
+            client->stream_name
+        );
+    }
 
-        } else { // Block up to timeout seconds
+    // Timeout or error
+    if (handle_redis_error(
+        reply,
+        "XREADGROUP GROUP %s %s %s COUNT 1 STREAMS %s >",
+        client->stream_name,
+        client->consumer_name,
+        "BLOCK X",
+        client->stream_name
+    )) { return NULL; }
 
-            len = snprintf(command_buf, 256, "BLPOP %s %d", client->bus_id, timeout);
+    // Unpack the XREADGROUP response, which is a nest of arrays.
+    // These arrays are mostly 1 and 2-element lists, since we are 
+    // only reading one item on a single stream.
+    if (reply->type == REDIS_REPLY_ARRAY && reply->elements > 0) {
+        tmp = reply->element[0];
+
+        if (tmp->type == REDIS_REPLY_ARRAY && tmp->elements > 1) {
+            tmp = tmp->element[1];
+
+            if (tmp->type == REDIS_REPLY_ARRAY && tmp->elements > 0) {
+                tmp = tmp->element[0];
+
+                if (tmp->type == REDIS_REPLY_ARRAY && tmp->elements > 1) {
+                    redisReply *r1 = tmp->element[0];
+                    redisReply *r2 = tmp->element[1];
+
+                    if (r1->type == REDIS_REPLY_STRING) {
+                        msg_id = strdup(r1->str);
+                    }
+
+                    if (r2->type == REDIS_REPLY_ARRAY && r2->elements > 1) {
+                        // r2->element[0] is the message name, which we
+                        // currently don't use for anything.
+
+                        r2 = r2->element[1];
+
+                        if (r2->type == REDIS_REPLY_STRING) {
+                            json = strdup(r2->str);
+                        }
+                    }
+                }
+            }
         }
     }
 
-    command_buf[len] = '\0';
+    freeReplyObject(reply); // XREADGROUP
 
-    osrfLogInternal(OSRF_LOG_MARK, 
-        "recv_one_chunk() sending command: %s", command_buf);
-
-    redisReply* reply = redisCommand(client->bus, command_buf);
-    if (handle_redis_error(reply)) { return NULL; }
-
-    char* json = NULL;
-    if (reply->type == REDIS_REPLY_STRING) { // LPOP
-        json = strdup(reply->str);
-
-    } else if (reply->type == REDIS_REPLY_ARRAY) { // BLPOP
-
-        // BLPOP returns [list_name, popped_value]
-        if (reply->elements == 2 && reply->element[1]->str != NULL) {
-            json = strdup(reply->element[1]->str); 
-        } else {
-            osrfLogInternal(OSRF_LOG_MARK, 
-                "No response returned within timeout: %d", timeout);
-        }
+    if (msg_id == NULL) {
+        // Read timed out. 'json' will also be NULL.
+        return NULL;
     }
 
-    freeReplyObject(reply);
+    reply = redisCommand(client->bus, "XACK %s %s %s", 
+        client->stream_name, client->stream_name, msg_id);
+
+    if (handle_redis_error(
+        reply,
+        "XACK %s %s %s",
+        client->stream_name, 
+        client->stream_name, msg_id
+    )) { return NULL; }
+
+    freeReplyObject(reply); // XACK
+
+    free(msg_id);
 
     osrfLogInternal(OSRF_LOG_MARK, "recv_one_chunk() read json: %s", json);
 
@@ -306,7 +411,8 @@ int client_discard( transport_client* client ) {
 
 	if (client->host != NULL) { free(client->host); }
 	if (client->unix_path != NULL) { free(client->unix_path); }
-	if (client->bus_id != NULL) { free(client->bus_id); }
+	if (client->stream_name != NULL) { free(client->stream_name); }
+	if (client->consumer_name != NULL) { free(client->consumer_name); }
 
 	free(client);
 
