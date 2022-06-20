@@ -11,7 +11,8 @@ use Time::HiRes qw/time/;
 # I tried using opensrf.settings but for reasons I didn't investigate
 # hitting opensrf.settings with lots of requests lead to failures.
 #my $test_service = "open-ils.storage";
-my $test_service = "opensrf.settings";
+#my $test_service = "opensrf.settings";
+my $test_service = "open-ils.cstore";
 
 my $iterations = 50;
 my $parallel = 1;

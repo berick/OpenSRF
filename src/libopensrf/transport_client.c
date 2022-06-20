@@ -47,9 +47,9 @@ int client_connect_with_stream_name(transport_client* client,
         return 0;
     }
 
-    osrfLogInfo(OSRF_LOG_MARK, "Connected to Redis instance OK");
+    osrfLogDebug(OSRF_LOG_MARK, "Connected to Redis instance OK");
 
-    osrfLogInfo(OSRF_LOG_MARK, "Sending AUTH with username=%s", username);
+    osrfLogDebug(OSRF_LOG_MARK, "Sending AUTH with username=%s", username);
 
     redisReply *reply = redisCommand(client->bus, "AUTH %s %s", username, password);
 
@@ -61,10 +61,12 @@ int client_connect_with_stream_name(transport_client* client,
 
     // Create our stream + consumer group.
     // This will produce an error when the group already exists, which
-    // will happen with service-level groups.
-    reply = redisCommand(client->bus, 
+    // will happen with service-level groups.  Skip error checking.
+    reply = redisCommand(
+        client->bus, 
         "XGROUP CREATE %s %s $ mkstream", 
-        client->stream_name, client->stream_name
+        client->stream_name, 
+        client->stream_name
     );
 
     freeReplyObject(reply);
@@ -184,15 +186,16 @@ int client_send_message(transport_client* client, transport_message* msg) {
 // On error, the reply is freed.
 static int handle_redis_error(redisReply *reply, char* command, ...) {
 
-    if (reply == NULL || reply->type == REDIS_REPLY_ERROR) {
-	    VA_LIST_TO_STRING(command);
-        char* err = reply == NULL ? "" : reply->str;
-        osrfLogError(OSRF_LOG_MARK, "Error in redisCommand(): %s : %s", err, VA_BUF);
-        freeReplyObject(reply);
-        return 1;
+    if (reply != NULL && reply->type != REDIS_REPLY_ERROR) {
+        return 0;
     }
 
-    return 0;
+    VA_LIST_TO_STRING(command);
+    char* err = reply == NULL ? "" : reply->str;
+    osrfLogError(OSRF_LOG_MARK, "REDIS Error [%s] %s", err, VA_BUF);
+    freeReplyObject(reply);
+
+    return 1;
 }
 
 /*
@@ -210,6 +213,7 @@ char* recv_one_chunk(transport_client* client, int timeout) {
     char* msg_id = NULL;
 
     if (timeout != 0) {
+
         if (timeout == -1) {
             // Redis timeout 0 means block indefinitely
             timeout = 0;
