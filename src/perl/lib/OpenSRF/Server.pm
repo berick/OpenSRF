@@ -351,14 +351,9 @@ sub build_osrf_handle {
     my $username = $conf->{username};
     my $password = $conf->{password};
 
-    # Every listener needs a unique consumer name.
-    my $consumer_name = 'service:' . 
-        $self->{service} . ':' . substr(md5_hex($$ . time . rand($$)), 0, 12);
-
     $self->{osrf_handle} =
         OpenSRF::Transport::Redis::Client->new(
             stream_name => "service:" . $self->{service},
-            consumer_name => $consumer_name,
             host => $host,
             port => $port,
             sock => $sock,

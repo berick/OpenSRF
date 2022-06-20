@@ -66,7 +66,6 @@ sub initialize {
     my $username = $self->params->{username}; 
     my $password = $self->params->{password}; 
     my $stream_name = $self->params->{stream_name};
-    my $consumer_name = $self->params->{consumer_name};
     my $max_queue_size = $self->params->{max_queue_size};
 
     $logger->debug("Redis client connecting: ".
@@ -112,7 +111,6 @@ sub initialize {
     }
 
     $self->stream_name($stream_name);
-    $self->consumer_name($consumer_name);
     $self->max_queue_size($max_queue_size);
 
     return $self;
@@ -129,13 +127,6 @@ sub stream_name {
     $self->{stream_name} = $stream_name if $stream_name;
     return $self->{stream_name};
 }
-
-sub consumer_name {
-    my ($self, $consumer_name) = @_;
-    $self->{consumer_name} = $consumer_name if $consumer_name;
-    return $self->{consumer_name};
-}
-
 
 sub construct {
     my ($class, $app, $context) = @_;
@@ -204,7 +195,7 @@ sub recv {
 
     my $packet = $self->redis->xreadgroup(
         GROUP => $self->stream_name,
-        $self->consumer_name,
+        $self->stream_name,
         @block,
         COUNT => 1,
         STREAMS => $self->stream_name,

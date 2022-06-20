@@ -37,10 +37,6 @@ struct transport_client_struct {
     // (Listener) connections.
     char* stream_name;
 
-    // Our unique name.
-    // Will match the unique stream_name for non-service-level connections.
-    char* consumer_name;
-
     int max_queue_size;
 
     int port;
