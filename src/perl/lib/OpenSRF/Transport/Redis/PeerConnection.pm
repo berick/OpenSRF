@@ -54,6 +54,7 @@ sub new {
         username => $username,
         password => $password,
         stream_name => $stream_name,
+        consumer_name => $stream_name,
         max_queue_size => $maxlen
     );
 

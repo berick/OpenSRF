@@ -12,6 +12,7 @@ transport_client* client_init(const char* server, int port, const char* unix_pat
 	/* start with an empty message queue */
 	client->bus = NULL;
 	client->stream_name = NULL;
+	client->consumer_name = NULL;
 
     client->max_queue_size = 1000; // TODO pull from config
     client->port = port;
@@ -26,8 +27,9 @@ int client_connect_with_stream_name(transport_client* client,
 	const char* username, const char* password) {
 
     osrfLogDebug(OSRF_LOG_MARK, "Transport client connecting with bus "
-        "stream=%s; host=%s; port=%d; unix_path=%s", 
+        "stream=%s; consumer=%s; host=%s; port=%d; unix_path=%s", 
         client->stream_name, 
+        client->consumer_name,
         client->host, 
         client->port, 
         client->unix_path
@@ -78,7 +80,21 @@ int client_connect_as_service(transport_client* client,
     growing_buffer *buf = buffer_init(32);
     buffer_fadd(buf, "service:%s", appname);
 
-    client->stream_name = buffer_release(buf);
+    // strdup the content, leave the buf alive.
+    client->stream_name = buffer_data(buf);
+
+    // Add some random stuff to the end of the consumer name, which
+    // has to be unuique per client.
+    char junk[256];
+	snprintf(junk, sizeof(junk), 
+        "%f.%d%ld", get_timestamp_millis(), (int) time(NULL), (long) getpid());
+
+    char* md5 = md5sum(junk);
+
+    buffer_add(buf, ":");
+    buffer_add_n(buf, md5, 12);
+
+    client->consumer_name = buffer_release(buf);
 
     return client_connect_with_stream_name(client, username, password);
 }
@@ -106,6 +122,7 @@ int client_connect(transport_client* client,
     }
 
 	client->stream_name = buffer_release(buf);
+	client->consumer_name = strdup(client->stream_name);
 
     free(md5);
 
@@ -208,7 +225,7 @@ char* recv_one_chunk(transport_client* client, int timeout) {
         reply = redisCommand(client->bus, 
             "XREADGROUP GROUP %s %s BLOCK %d COUNT 1 STREAMS %s >",
             client->stream_name,
-            client->stream_name,
+            client->consumer_name,
             timeout,
             client->stream_name
         );
@@ -218,7 +235,7 @@ char* recv_one_chunk(transport_client* client, int timeout) {
         reply = redisCommand(client->bus, 
             "XREADGROUP GROUP %s %s COUNT 1 STREAMS %s >",
             client->stream_name,
-            client->stream_name,
+            client->consumer_name,
             client->stream_name
         );
     }
@@ -228,7 +245,7 @@ char* recv_one_chunk(transport_client* client, int timeout) {
         reply,
         "XREADGROUP GROUP %s %s %s COUNT 1 STREAMS %s >",
         client->stream_name,
-        client->stream_name,
+        client->consumer_name,
         "BLOCK X",
         client->stream_name
     )) { return NULL; }
@@ -399,6 +416,7 @@ int client_discard( transport_client* client ) {
 	if (client->host != NULL) { free(client->host); }
 	if (client->unix_path != NULL) { free(client->unix_path); }
 	if (client->stream_name != NULL) { free(client->stream_name); }
+	if (client->consumer_name != NULL) { free(client->consumer_name); }
 
 	free(client);
 
