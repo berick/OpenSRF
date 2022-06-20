@@ -162,14 +162,14 @@ int client_send_message(transport_client* client, transport_message* msg) {
         "client_send_message() to=%s %s", msg->recipient, msg->msg_json);
 
     redisReply *reply = redisCommand(client->bus,
-        "XADD %s MAXLEN ~ %d * message %s",
+        "XADD %s NOMKSTREAM MAXLEN ~ %d * message %s",
         msg->recipient, 
         client->max_queue_size,
         msg->msg_json
     );
 
     if (handle_redis_error(reply, 
-        "XADD %s MAXLEN ~ %d * message %s",
+        "XADD %s NOMKSTREAM MAXLEN ~ %d * message %s",
         msg->recipient, 
         client->max_queue_size,
         msg->msg_json)

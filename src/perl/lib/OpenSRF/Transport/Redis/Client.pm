@@ -157,6 +157,7 @@ sub send {
 
     $self->redis->xadd(
         $msg->to,                   # recipient == stream name
+        'NOMKSTREAM',
         'MAXLEN', 
         '~',                        # maxlen-ish
         $self->max_queue_size,
