@@ -2,11 +2,9 @@
 <config>
 
   <connections>
-    <service>
 
-      <!-- 
-        Can this connection talk to private services?
-      -->
+    <service>
+      <!-- Can this connection talk to private services? -->
       <privileged>true</privileged>
 
       <message_bus>
@@ -15,23 +13,26 @@
         <username>opensrf@private</username>
         <password>password</password>
 
-        <!-- 
-          Max number of un-acknowledged messages Redis will retain in the 
+        <!--
+          Max number of unsent messages Redis will retain in the
           message stream before discarding the oldest.  This value needs
           to be *something* or queues will grow unbounded,  service-level
-          request queues especially. 
+          request queues especially.  See XREADGROUP MAXLEN.
         -->
         <max_queue_size>1000</max_queue_size>
-
       </message_bus>
 
+      <!--
       <logfile>syslog</logfile>
       <syslog>local0</syslog>
       <actlog>local1</actlog>
       <loglevel>3</loglevel>
+      -->
+      <logfile>LOCALSTATEDIR/log/osrfsys.log</logfile>
     </service>
 
     <gateway>
+	  <!-- This connection CANNOT talk to private services -->
       <message_bus>
         <host>127.0.0.1</host>
         <port>6379</port>
@@ -39,10 +40,13 @@
         <password>password</password>
       </message_bus>
       <client>true</client>
+      <!--
       <logfile>syslog</logfile>
       <syslog>local6</syslog>
       <actlog>local1</actlog>
+      -->
       <loglevel>3</loglevel>
+      <logfile>LOCALSTATEDIR/log/gateway.log</logfile>
     </gateway>
   </connections>
 
@@ -50,45 +54,13 @@
 
   <public_services>
     <service>opensrf.math</service>
-    <service>open-ils.actor</service>
-    <service>open-ils.acq</service>
-    <service>open-ils.auth</service>
-    <service>open-ils.auth_proxy</service>
-    <service>open-ils.booking</service>
-    <service>open-ils.cat</service>
-    <service>open-ils.circ</service>
-    <service>open-ils.collections</service>
-    <service>open-ils.courses</service>
-    <service>open-ils.curbside</service>
-    <service>open-ils.fielder</service>
-    <service>open-ils.pcrud</service>
-    <service>open-ils.permacrud</service>
-    <service>open-ils.reporter</service>
-    <service>open-ils.resolver</service>
-    <service>open-ils.search</service>
-    <service>open-ils.supercat</service>
-    <service>open-ils.url_verify</service>
-    <service>open-ils.vandelay</service>
-    <service>open-ils.serial</service>
-    <service>open-ils.ebook_api</service>
   </public_services>
 
   <log_protect>
-    <match_string>open-ils.auth.authenticate.verify</match_string>
-    <match_string>open-ils.auth.authenticate.complete</match_string>
-    <match_string>open-ils.auth.login</match_string>
-    <match_string>open-ils.auth_proxy.login</match_string>
-    <match_string>open-ils.actor.patron.password_reset.commit</match_string>
-    <match_string>open-ils.actor.user.password</match_string>
-    <match_string>open-ils.actor.user.username</match_string>
-    <match_string>open-ils.actor.user.email</match_string>
-    <match_string>open-ils.actor.patron.update</match_string>
-    <match_string>open-ils.cstore.direct.actor.user.create</match_string>
-    <match_string>open-ils.cstore.direct.actor.user.update</match_string>
-    <match_string>open-ils.cstore.direct.actor.user.delete</match_string>
-    <match_string>open-ils.search.z3950.apply_credentials</match_string>
-    <match_string>open-ils.geo</match_string>
-    <match_string>open-ils.actor.geo</match_string>
+  	<!--
+  	<match_string>open-ils.auth</match_string>
+  	<match_string>open-ils.some_service.some_method</match_string>
+  	-->
   </log_protect>
 
 </config>
