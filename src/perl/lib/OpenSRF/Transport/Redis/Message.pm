@@ -18,7 +18,7 @@ sub new {
         $self->{thread} = $args{thread} || '';
         $self->{body} = $args{body} || '';
         $self->{osrf_xid} = $args{osrf_xid} || '';
-        $self->{bus_id} = $args{bus_id} || '';
+        $self->{msg_id} = $args{msg_id} || '';
     }
 
     return $self;
@@ -65,16 +65,16 @@ sub osrf_xid {
     return $self->{osrf_xid};
 }
 
-sub bus_id {
-    my($self, $bus_id) = @_;
-    $self->{bus_id} = $bus_id if defined $bus_id;
-    return $self->{bus_id};
+sub msg_id {
+    my($self, $msg_id) = @_;
+    $self->{msg_id} = $msg_id if defined $msg_id;
+    return $self->{msg_id};
 }
 
 sub to_json {
     my $self = shift;
 
-    # No nead to encode the bus_id in outbound messages since the ID
+    # No nead to encode the msg_id in outbound messages since the ID
     # won't exist yet.
     return OpenSRF::Utils::JSON->perl2JSON({
         to => $self->{to},

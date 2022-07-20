@@ -217,7 +217,7 @@ sub recv {
 
     # TODO make this more self-documenting.  also, too brittle?
     my $container = $packet->[0]->[1]->[0];
-    my $bus_id = $container->[0];
+    my $msg_id = $container->[0];
     my $json = $container->[1]->[1];
 
     $logger->internal("recv() $json");
@@ -227,10 +227,10 @@ sub recv {
     # Note if we don't ACK utnil after successfully processing each
     # message, a malformed message will stay in the pending list.
     # Consider options.
-    $self->redis->xack($self->stream_name, $self->stream_name, $bus_id);
+    $self->redis->xack($self->stream_name, $self->stream_name, $msg_id);
 
     my $msg = OpenSRF::Transport::Redis::Message->new(json => $json);
-    $msg->bus_id($bus_id);
+    $msg->msg_id($msg_id);
 
     return undef unless $msg;
 
