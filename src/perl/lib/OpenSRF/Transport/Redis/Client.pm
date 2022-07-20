@@ -5,141 +5,142 @@ use Redis;
 use Time::HiRes q/time/;
 use OpenSRF::Utils::JSON;
 use OpenSRF::Utils::Logger qw/$logger/;
+use OpenSRF::Transport;
 use OpenSRF::Transport::Redis::Message;
+use OpenSRF::Transport::Redis::BusConnection;
+
+# Map of bus domains to bus connections.
+my %connections;
+
+# There will only be one Client per process, but each client may
+# have multiple connections.
+my $_singleton;
+sub retrieve { return $_singleton; }
 
 sub new {
-    my ($class, %params) = @_;
-    my $self = bless({}, ref($class) || $class);
-    $self->params(\%params);
-    return $self;
-}
+    my ($class, $connection_type, $service) = @_;
 
-sub redis {
-    my ($self, $redis) = @_;
-    $self->{redis} = $redis if $redis;
-    return $self->{redis};
-}
+    return $_singleton if $_singleton;
 
-sub params {
-    my ($self, $params) = @_;
-    $self->{params} = $params if $params;
-    return $self->{params};
-}
+    my $self = {
+        service => $service,
+        connection_type => $connection_type
+    };
 
-sub disconnect {
-    my $self = shift;
-    return unless $self->redis;
+    bless($self, $class);
 
-    if ($self->stream_name =~ /^client:/) {
-        # Delete our stream since we're the only one using it.  Deleting
-        # the stream also deletes our consumer group.
-        $self->redis->del($self->stream_name);
+    my $conf = $self->bus_config;
+
+    # Create a connection for our primary domain.
+    $self->add_connection($conf->{domain});
+    $self->{primary_domain} = $conf->{domain};
+
+    if ($service) {
+        # If we're a service, this is where we listen for service-level requests.
+        $self->{service_address} = "opensrf:service:$service";
     }
 
-    $self->redis->quit;
-    delete $self->{redis};
+    return $_singleton = $self;
 }
 
-sub gather { 
-    my $self = shift; 
-    $self->process(0); 
-}
-
-# -------------------------------------------------
-
-sub tcp_connected {
+sub bus_config {
     my $self = shift;
-    return $self->redis ? 1 : 0;
+
+    my $conf = OpenSRF::Utils::Config->current->as_hash;
+
+    $conf = $conf->{connections} or
+        die "No 'connections' block in core configuration\n";
+
+    $conf = $conf->{$self->connection_type} or
+        die "No '$connection_type' connection in core configuration\n";
+
+    return $conf;
+}
+
+sub connection_type {
+    my $self = shift;
+    return $self->{connection_type};
+}
+
+sub add_connection {
+    my ($self, $domain) = @_;
+
+    my $conf = $self->bus_config;
+
+    my $connection = OpenSRF::Transport::Redis::BusConnection->new(
+        $domain, 
+        $conf->{port}, 
+        $conf->{username}, 
+        $conf->{password},
+        $conf->{max_queue_size}
+    );
+
+    $connection->set_address($self->service);
+    $connections{$domain} = $connection;
+    
+    $connection->connect;
+}
+
+# Contains a value if this is a service client.
+# Undef for standalone clients.
+sub service {
+    my $self = shift;
+    return $self->{service};
+}
+
+# Contains a value if this is a service client.
+# Undef for standalone clients.
+sub service_address {
+    my $self = shift;
+    return $self->{service_address};
+}
+
+sub primary_domain {
+    my $self = shift;
+    return $self->{primary_domain};
+}
+
+sub primary_connection {
+    my $self = shift;
+    return $connections{$self->primary_domain};
+}
+
+sub disconnect_all {
+    my ($self, $domain) = @_;
+
+    for my $domain (keys %connections) {
+        my $con = $connections{$domain};
+        $con->disconnect($self->primary_domain eq $domain);
+        delete $connections{$domain};
+    }
 }
 
 sub connected {
     my $self = shift;
-    return $self->tcp_connected;
+    return $self->primary_connection && $self->primary_connection->connected;
 }
 
-sub initialize {
+
+sub create_service_stream {
     my $self = shift;
 
-    my $host = $self->params->{host} || ''; 
-    my $port = $self->params->{port} || 0; 
-    my $sock = $self->params->{sock} || ''; 
-    my $username = $self->params->{username}; 
-    my $password = $self->params->{password}; 
-    my $stream_name = $self->params->{stream_name};
-    my $consumer_name = $self->params->{consumer_name};
-    my $max_queue_size = $self->params->{max_queue_size};
-
-    $logger->debug("Redis client connecting: ".
-        "host=$host port=$port sock=$sock username=$username stream_name=$stream_name");
-
-    return 1 if $self->redis; # already connected
-
-    # UNIX socket file takes precedence over host:port.
-    my @connect_args = $sock ? (sock => $sock) : (server => "$host:$port");
-
-    # On disconnect, try to reconnect every 100ms up to 60 seconds.
-    push(@connect_args, (reconnect => 60, every => 100_000));
-
-    $logger->debug("Connecting to bus: @connect_args");
-
-    unless ($self->redis(Redis->new(@connect_args))) {
-        throw OpenSRF::EX::Jabber("Could not connect to Redis bus with @connect_args");
-        return 0;
-    }
-
-    unless ($self->redis->auth($username, $password) eq 'OK') {
-        throw OpenSRF::EX::Jabber("Cannot authenticate with Redis instance user=$username");
-        return 0;
-    }
-
-    $logger->debug("Auth'ed with Redis as $username OK : stream_name=$stream_name");
-
     eval { 
-        # This gets mad when a stream / group already exists, but 
-        # Listeners share a stream/group name so dupes are possible.
+        # This gets mad when a stream / group already exists, 
+        # but Workers share a stream/group name when receiving 
+        # service-level requests
 
-        $self->redis->xgroup(   
+        $self->primary_connection->redis->xgroup(   
             'create',
-            $stream_name,   # stream name
-            $stream_name,   # group name
+            $self->service_address, # stream name
+            $self->service_address, # group name
             '$',            # only receive new messages
             'mkstream'      # create this stream if it's not there.
         );
     };
 
     if ($@) {
-        $logger->info("XGROUP CREATE returned : $@");
+        $logger->debug("create_service_stream returned : $@");
     }
-
-    $self->stream_name($stream_name);
-    $self->consumer_name($consumer_name);
-    $self->max_queue_size($max_queue_size);
-
-    return $self;
-}
-
-sub max_queue_size {
-    my ($self, $max_queue_size) = @_;
-    $self->{max_queue_size} = $max_queue_size if $max_queue_size;
-    return $self->{max_queue_size};
-}
-
-sub stream_name {
-    my ($self, $stream_name) = @_;
-    $self->{stream_name} = $stream_name if $stream_name;
-    return $self->{stream_name};
-}
-
-sub consumer_name {
-    my ($self, $consumer_name) = @_;
-    $self->{consumer_name} = $consumer_name if $consumer_name;
-    return $self->{consumer_name};
-}
-
-
-sub construct {
-    my ($class, $app, $context) = @_;
-    $class->peer_handle($class->new($app, $context)->initialize);
 }
 
 sub send {
@@ -149,9 +150,13 @@ sub send {
     $msg->body(OpenSRF::Utils::JSON->JSON2perl($msg->body));
 
     $msg->osrf_xid($logger->get_osrf_xid);
-    $msg->from($self->stream_name);
+    $msg->from($self->primary_connection->address);
 
     my $msg_json = $msg->to_json;
+
+    # TODO this could be a service address or a worker/client address.
+    my $recipient = $msg->to;
+    my (undef, 
 
     $logger->internal("send(): to=" . $msg->to . " : $msg_json");
 
@@ -166,9 +171,6 @@ sub send {
         $msg_json
     );
 }
-
-
-
 
 sub process {
     my ($self, $timeout) = @_;
@@ -185,7 +187,11 @@ sub process {
             ("This Redis instance is no longer connected to the server ");
     }
 
-    return $self->recv($timeout);
+    my $value = $self->recv($timeout);
+
+    return 0 unless $value;
+
+    return OpenSRF::Transport->handler($self->service, $val);
 }
 
 # $timeout=0 means check for data without blocking
