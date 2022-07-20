@@ -51,8 +51,10 @@ sub bus_config {
     $conf = $conf->{connections} or
         die "No 'connections' block in core configuration\n";
 
-    $conf = $conf->{$self->connection_type} or
-        die "No '$connection_type' connection in core configuration\n";
+    my $con_type = $self->connection_type;
+
+    $conf = $conf->{$con_type} or
+        die "No '$con_type' connection in core configuration\n";
 
     return $conf;
 }
@@ -79,6 +81,25 @@ sub add_connection {
     $connections{$domain} = $connection;
     
     $connection->connect;
+
+    return $connection;
+}
+
+sub get_connection {
+    my ($self, $domain) = @_;
+
+    my $con = $connections{$domain};
+
+    return $con if $con;
+
+    eval { $con = $self->add_connection($domain) };
+
+    if ($@) {
+        $logger->error("Could not connect to bus on domain: $domain : $@");
+        return undef;
+    }
+
+    return $con;
 }
 
 # Contains a value if this is a service client.
@@ -154,26 +175,30 @@ sub send {
 
     my $msg_json = $msg->to_json;
 
-    # TODO this could be a service address or a worker/client address.
     my $recipient = $msg->to;
-    my (undef, 
+    my $con = $self->primary_connection;
 
-    $logger->internal("send(): to=" . $msg->to . " : $msg_json");
+    if ($recipient =~ /^opensrf:client/o) {
+        # Clients may be lurking on remote domains.
+        # Make sure we have a connection to said domain.
 
-    $self->redis->xadd(
-        $msg->to,                   # recipient == stream name
-        'NOMKSTREAM',
-        'MAXLEN', 
-        '~',                        # maxlen-ish
-        $self->max_queue_size,
-        '*',                        # let Redis generate the ID
-        'message',                  # gotta call it something 
-        $msg_json
-    );
+        # opensrf:client:domain:...
+        my (undef, undef, $domain) = split(/:/, $recipient);
+
+        my $con = $self->get_connection($domain);
+        if (!$con) {
+            $logger->error("Cannot send message to domain $domain: $msg_json");
+            return;
+        }
+    }
+
+    $logger->internal("send(): recipient=$recipient : $msg_json");
+
+    $con->send($recipient, $msg_json);
 }
 
 sub process {
-    my ($self, $timeout) = @_;
+    my ($self, $timeout, $for_service) = @_;
 
     $timeout ||= 0;
 
@@ -182,14 +207,18 @@ sub process {
 
     $timeout = int($timeout);
 
-    unless ($self->redis) {
-        throw OpenSRF::EX::JabberDisconnected 
-            ("This Redis instance is no longer connected to the server ");
+    if (!$self->connected) {
+        # We can't do anything without a primary bus connection.
+        # Sleep a short time to avoid die/fork storms, then
+        # get outta here.
+        $logger->error("We have no primary bus connection");
+        sleep 5;
+        die "Exiting on lack of primary bus connection";
     }
 
-    my $value = $self->recv($timeout);
+    my $val = $self->recv($timeout, $for_service);
 
-    return 0 unless $value;
+    return 0 unless $val;
 
     return OpenSRF::Transport->handler($self->service, $val);
 }
@@ -197,53 +226,23 @@ sub process {
 # $timeout=0 means check for data without blocking
 # $timeout=-1 means block indefinitely.
 sub recv {
-    my ($self, $timeout) = @_;
+    my ($self, $timeout, $for_service) = @_;
 
-    $logger->debug("server: watching for content at " . $self->stream_name);
+    my $dest_stream = $for_service ? $self->{service_address} : undef;
 
-    my @block;
-    if ($timeout) {
-        # 0 means block indefinitely in Redis
-        $timeout = 0 if $timeout == -1;
-        $timeout *= 1000; # milliseconds
-        @block = (BLOCK => $timeout);
-    }
+    my $resp = $self->primary_connection->recv($timeout, $dest_stream);
 
-    my $packet = $self->redis->xreadgroup(
-        GROUP => $self->stream_name,
-        $self->consumer_name,
-        @block,
-        COUNT => 1,
-        STREAMS => $self->stream_name,
-        '>' # new messages only
-    );      
+    return undef unless $resp;
 
-    # Timed out waiting for data.
-    return undef unless defined $packet;
-
-    # TODO make this more self-documenting.  also, too brittle?
-    my $container = $packet->[0]->[1]->[0];
-    my $msg_id = $container->[0];
-    my $json = $container->[1]->[1];
-
-    $logger->internal("recv() $json");
-
-    # TODO putting this here for now -- it may live somewhere else.
-    # Ideally this could happen out of band.
-    # Note if we don't ACK utnil after successfully processing each
-    # message, a malformed message will stay in the pending list.
-    # Consider options.
-    $self->redis->xack($self->stream_name, $self->stream_name, $msg_id);
-
-    my $msg = OpenSRF::Transport::Redis::Message->new(json => $json);
-    $msg->msg_id($msg_id);
+    my $msg = OpenSRF::Transport::Redis::Message->new(json => $resp->{msg_json});
 
     return undef unless $msg;
 
+    $msg->msg_id($resp->{msg_id});
+
     $logger->internal("recv() thread=" . $msg->thread);
 
-    # The message body is doubly encoded as JSON to, among other things,
-    # support message chunking.
+    # The message body is doubly encoded as JSON.
     $msg->body(OpenSRF::Utils::JSON->perl2JSON($msg->body));
 
     return $msg;
