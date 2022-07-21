@@ -22,8 +22,6 @@ use OpenSRF::Transport::PeerHandle;
 use OpenSRF::Utils::SettingsClient;
 use OpenSRF::Utils::Logger qw($logger);
 use OpenSRF::Transport::SlimJabber::Client;
-use Digest::MD5 qw(md5_hex);
-use Encode;
 use POSIX qw/:sys_wait_h :errno_h/;
 use Fcntl qw(F_GETFL F_SETFL O_NONBLOCK);
 use Time::HiRes qw/usleep/;
@@ -31,11 +29,10 @@ use IO::Select;
 use Socket;
 our $chatty = 1; # disable for production
 
-use constant STATUS_PIPE_DATA_SIZE => 12;
-use constant WRITE_PIPE_DATA_SIZE  => 12;
+use constant STATUS_PIPE_DATA_SIZE => 16;
 
 sub new {
-    my($class, $service, %args) = @_;
+    my ($class, $service, %args) = @_;
     my $self = bless(\%args, $class);
 
     $self->{service}        = $service; # service name
@@ -155,58 +152,31 @@ sub run {
     my $wait_time = 1;
 
     # main server loop
-    while(1) {
+    while (1) {
 
-        $self->check_status;
         $self->{child_died} = 0;
+        $self->check_status($wait_time);
 
-        my $msg = $self->{osrf_handle}->process($wait_time);
+        if ($self->{child_died}) {
+            # SIGCHLD caused check_status() to exit early.  Let our CHLD
+            # handler do its thing before we do any more idle maintenance.
+            $wait_time = 1;
+            next;
+        }
 
-        # we woke up for any reason, reset the wait time to allow
-        # for idle maintenance as necessary
-        $wait_time = 1;
+        my $changes = $self->perform_idle_maintenance;
 
-        if($msg) {
+        if ($changes) {
 
-            if ($msg->type and $msg->type eq 'error') {
-                $logger->info("server: Listener received an XMPP error ".
-                    "message.  Likely a bounced message. sender=".$msg->from);
+            # Wake frequently when changes are happening since more
+            # changes are likely coming.
+            $wait_time = 1;
 
-            } elsif(my $child = pop(@{$self->{idle_list}})) {
+        } elsif(@{$self->{active_list}} == 0) {
 
-                # we have an idle child to handle the request
-                $chatty and $logger->internal("server: passing request to idle child $child");
-                push(@{$self->{active_list}}, $child);
-                $self->write_child($child, $msg);
-
-            } elsif($self->{num_children} < $self->{max_children}) {
-
-                # spawning a child to handle the request
-                $chatty and $logger->internal("server: spawning child to handle request");
-                $self->write_child($self->spawn_child(1), $msg);
-
-            } else {
-                $logger->warn("server: no children available, waiting... consider increasing " .
-                    "max_children for this application higher than $self->{max_children} ".
-                    "in the OpenSRF configuration if this message occurs frequently");
-                $self->check_status(1); # block until child is available
-
-                my $child = pop(@{$self->{idle_list}});
-                push(@{$self->{active_list}}, $child);
-                $self->write_child($child, $msg);
-            }
-
-        } else {
-
-            # don't perform idle maint immediately when woken by SIGCHLD
-            unless($self->{child_died}) {
-
-                # when we hit equilibrium, there's no need for regular
-                # maintenance, so set wait_time to 'forever'
-                $wait_time = -1 if 
-                    !$self->perform_idle_maintenance and # no maintenance performed this time
-                    @{$self->{active_list}} == 0; # no active children 
-            }
+            # If we have no active workers and no changes were made
+            # for idle maintenance, go back to blocking indefinitely.
+            $wait_time = -1;
         }
     }
 }
@@ -264,135 +234,91 @@ sub kill_child {
 # ----------------------------------------------------------------
 sub build_osrf_handle {
     my $self = shift;
-
-    my $conf = OpenSRF::Utils::Config->current
-        ->as_hash->{connections}->{service}->{message_bus};
-
-    my $port = $conf->{port} || 6379;
-    my $host = $conf->{host} || '127.0.0.1';
-    my $sock = $conf->{sock};
-    my $username = $conf->{username};
-    my $password = $conf->{password};
-
-    # Every listener needs a unique consumer name.
-    my $consumer_name = 'service:' . 
-        $self->{service} . ':' . substr(md5_hex($$ . time . rand($$)), 0, 12);
-
-    $self->{osrf_handle} =
-        OpenSRF::Transport::Redis::Client->new(
-            stream_name => "service:" . $self->{service},
-            consumer_name => $consumer_name,
-            host => $host,
-            port => $port,
-            sock => $sock,
-            username => $username,
-            password => $password
-        );
-
-    $self->{osrf_handle}->initialize;
-}
-
-
-# ----------------------------------------------------------------
-# Sends request data to a child process
-# ----------------------------------------------------------------
-sub write_child {
-    my($self, $child, $msg) = @_;
-    #my $xml = encode_utf8(decode_utf8($msg->to_xml));
-    my $json = $msg->to_json;
-
-    # tell the child how much data to expect, minus the header
-    my $write_size;
-    {use bytes; $write_size = length($json)}
-    $write_size = sprintf("%*s", WRITE_PIPE_DATA_SIZE, $write_size);
-
-    for (0..2) {
-
-        $self->{sig_pipe} = 0;
-        local $SIG{'PIPE'} = sub { $self->{sig_pipe} = 1; };
-
-        # In rare cases a child can die between creation and first
-        # write, typically a result of a jabber connect error.  Before
-        # sending data to each child, confirm it's still alive.  If it's
-        # not, log the error and drop the message to prevent the parent
-        # process from dying.
-        # When a child dies, all of its attributes are deleted,
-        # so the lack of a pid means the child is dead.
-        if (!$child->{pid}) {
-            $logger->error("server: child is dead in write_child(). ".
-                "unable to send message: $json");
-            return; # avoid syswrite crash
-        }
-
-        # send message to child data pipe
-        syswrite($child->{pipe_to_child}, $write_size . $json);
-
-        last unless $self->{sig_pipe};
-        $logger->error("server: got SIGPIPE writing to $child, retrying...");
-        usleep(50000); # 50 msec
-    }
-
-    $logger->error("server: unable to send request message to child $child") if $self->{sig_pipe};
+    OpenSRF::Transport::PeerHandle->construct('service', $self->{service});
+    $self->{osrf_handle} = OpenSRF::Transport::PeerHandle->retrieve;
 }
 
 # ----------------------------------------------------------------
 # Checks to see if any child process has reported its availability
-# In blocking mode, blocks until a child has reported.
+# timeout -1 means block indefinitely.
 # ----------------------------------------------------------------
 sub check_status {
-    my($self, $block) = @_;
+    my ($self, $timeout) = @_;
 
-    return unless @{$self->{active_list}};
+    $timeout ||= 0;
 
-    my @pids;
+    my @idles;
+    my @actives;
 
     while (1) {
 
-        # if can_read or sysread is interrupted while bloking, go back and 
-        # wait again until we have at least 1 free child
-
-        # refresh the read_set handles in case we lost a child in the previous iteration
+        # Refresh the read_set handles in case we lost a child 
+        # in the previous iteration.
         my $read_set = IO::Select->new;
-        $read_set->add($_->{pipe_to_child}) for @{$self->{active_list}};
 
-        if(my @handles = $read_set->can_read(($block) ? undef : 0)) {
-            my $pid = '';
+        $read_set->add($_->{pipe_parent_read}) 
+            for (@{$self->{active_list}}, @{$self->{idle_list}});
+
+        if (my @handles = $read_set->can_read(($timeout < 0) ? undef : $timeout)) {
+            my $status = '';
             for my $pipe (@handles) {
-                sysread($pipe, $pid, STATUS_PIPE_DATA_SIZE) or next;
-                push(@pids, int($pid));
+                sysread($pipe, $status, STATUS_PIPE_DATA_SIZE) or next;
+
+                my ($state, $pid) = split(/:/, $status);
+                
+                if ($state eq 'active') {
+                    push(@actives, $pid);
+                } elsif ($state eq 'idle') {
+                    push(@idles, $pid);
+                }
             }
         }
 
-        last unless $block and !@pids;
+        last unless $timeout < 0 && !(@idles || @actives);
     }
 
-    return unless @pids;
+    return unless @idles || @actives;
 
-    $chatty and $logger->internal(sub{return "server: ".scalar(@pids)." children reporting for duty: (@pids)" });
+    $chatty and $logger->internal(sub { 
+        return "server: ".scalar(@idles)." children reporting for duty: (@idles)" });
+    $chatty and $logger->internal(sub { 
+        return "server: ".scalar(@actives)." children start work: (@actives)" });
 
     my $child;
     my @new_actives;
+    my @new_idles;
 
     # move the children from the active list to the idle list
     for my $proc (@{$self->{active_list}}) {
-        if(grep { $_ == $proc->{pid} } @pids) {
-            push(@{$self->{idle_list}}, $proc);
+        if (grep { $_ == $proc->{pid} } @idles) {
+            push(@new_idles, $proc);
         } else {
             push(@new_actives, $proc);
         }
     }
 
+    # move the children from the idle list to the active list
+    for my $proc (@{$self->{idle_list}}) {
+        if (grep { $_ == $proc->{pid} } @actives) {
+            push(@new_actives, $proc);
+        } else {
+            push(@new_idles, $proc);
+        }
+    }
+
     $self->{active_list} = [@new_actives];
+    $self->{idle_list} = [@new_idles];
 
     $chatty and $logger->internal(sub{return sprintf(
         "server: %d idle and %d active children after status update",
             scalar(@{$self->{idle_list}}), scalar(@{$self->{active_list}})) });
 
-    # some children just went from active to idle. let's see 
-    # if any of them need to be killed from a previous sighup.
+    # If some children just went from active to idle, see if
+    # any of them need to be recycled from a previous sighup.
+    return unless @idles;
 
     for my $child (@{$self->{sighup_pending}}) {
-        if (grep {$_ == $child->{pid}} @pids) {
+        if (grep {$_ == $child->{pid}} @idles) {
 
             $chatty and $logger->internal(
                 "server: killing previously-active ".
@@ -427,8 +353,7 @@ sub reap_children {
 
         my $child = $self->{pid_map}->{$pid};
 
-        close($child->{pipe_to_parent});
-        close($child->{pipe_to_child});
+        close($child->{pipe_parent_read});
 
         $self->{active_list} = [ grep { $_->{pid} != $pid } @{$self->{active_list}} ];
         $self->{idle_list} = [ grep { $_->{pid} != $pid } @{$self->{idle_list}} ];
@@ -462,23 +387,21 @@ sub spawn_child {
 
     my $child = OpenSRF::Server::Child->new($self);
 
-    # socket for sending message data to the child
-    if(!socketpair(
-        $child->{pipe_to_child},
-        $child->{pipe_to_parent},
-        AF_UNIX, SOCK_STREAM, PF_UNSPEC)) {
-            $logger->error("server: error creating data socketpair: $!");
-            return undef;
+    if (!pipe($child->{pipe_parent_read}, $child->{pipe_child_write})) {
+        $logger->error("server: error creating pipe: $!");
+        return undef;
     }
 
-    $child->{pipe_to_child}->autoflush(1);
-    $child->{pipe_to_parent}->autoflush(1);
+    $child->{pipe_child_write}->autoflush(1);
 
     $child->{pid} = fork();
 
-    if($child->{pid}) { # parent process
+    if ($child->{pid}) { # parent process
         $self->{num_children}++;
         $self->{pid_map}->{$child->{pid}} = $child;
+
+        # Parent never writes to the pipe.
+        close($child->{pipe_child_write});
 
         if($active) {
             push(@{$self->{active_list}}, $child);
@@ -486,7 +409,8 @@ sub spawn_child {
             push(@{$self->{idle_list}}, $child);
         }
 
-        $chatty and $logger->internal(sub{return "server: server spawned child $child with ".$self->{num_children}." total children" });
+        $chatty and $logger->internal(sub {
+            return "server: server spawned child $child with ".$self->{num_children}." total children" });
 
         return $child;
 
@@ -496,9 +420,13 @@ sub spawn_child {
         # may have been adopted from the parent process.
         $SIG{$_} = 'DEFAULT' for qw/TERM INT QUIT HUP CHLD USR1 USR2/;
 
+        # Child never reads from the pipe.
+        close($child->{pipe_parent_read});
+
         if($self->{stderr_log}) {
 
-            $chatty and $logger->internal(sub{return "server: redirecting STDERR to " . $self->{stderr_log} });
+            $chatty and $logger->internal(sub {
+                return "server: redirecting STDERR to " . $self->{stderr_log} });
 
             close STDERR;
             unless( open(STDERR, '>>' . $self->{stderr_log}) ) {
@@ -631,7 +559,7 @@ sub init {
     my $self = shift;
     my $service = $self->{parent}->{service};
     $0 = "OpenSRF Drone [$service]";
-    OpenSRF::Transport::PeerHandle->construct($service, 'service');
+    OpenSRF::Transport::PeerHandle->construct('service', $service);
     OpenSRF::Application->application_implementation->child_init
         if (OpenSRF::Application->application_implementation->can('child_init'));
 }
@@ -648,7 +576,9 @@ sub run {
     # main child run loop.  Ends when this child hits max requests.
     while(1) {
 
-        my $data = $self->wait_for_request or next;
+        my $osrf_msg = $self->wait_for_request or next;
+
+        $self->send_status('active');
 
         # Update process name to show activity
         my $orig_name = $0;
@@ -656,14 +586,12 @@ sub run {
 
         # Discard extraneous data from our direct message bus ID.
         if (!$network->flush_socket()) {
-            $logger->error("server: network disconnected!  child dropping request and exiting: $data");
+            $logger->error("server: network disconnected!  child exiting");
             exit;
         }
 
-        my $session = OpenSRF::Transport->handler(
-            $self->{parent}->{service},
-            OpenSRF::Transport::Redis::Message->new(json => $data)
-        );
+        my $session = 
+            OpenSRF::Transport->handler($self->{parent}->{service}, $osrf_msg);
 
         my $recycle = $self->keepalive_loop($session);
 
@@ -676,13 +604,14 @@ sub run {
         }
 
         # Tell the parent process we are available to process requests
-        $self->send_status;
+        $self->send_status('idle');
 
         # Repair process name
         $0 = $orig_name;
     }
 
-    $chatty and $logger->internal("server: child process shutting down after reaching max_requests");
+    $chatty and $logger->internal(
+        "server: child process shutting down after reaching max_requests");
 
     OpenSRF::Application->application_implementation->child_exit
         if (OpenSRF::Application->application_implementation->can('child_exit'));
@@ -693,73 +622,17 @@ sub run {
 # ----------------------------------------------------------------
 sub wait_for_request {
     my $self = shift;
-
-    my $data = ''; # final request data
-    my $buf_size = 4096; # default linux pipe_buf (atomic window, not total size)
-    my $read_pipe = $self->{pipe_to_parent};
-    my $bytes_needed; # size of the data we are about to receive
-    my $bytes_recvd; # number of bytes read so far
-    my $first_read = 1; # true for first loop iteration
-    my $read_error;
+    my $network = OpenSRF::Transport::PeerHandle->retrieve;
 
     while (1) {
 
-        # wait for some data to start arriving
-        my $read_set = IO::Select->new;
-        $read_set->add($read_pipe);
-    
-        while (1) {
-            # if can_read is interrupted while blocking, 
-            # go back and wait again until it succeeds.
-            last if $read_set->can_read;
-        }
+        # We listen for service-level requests on the shared service address.
+        my $osrf_msg = $network->recv(-1, $network->{service_address});
 
-        # parent started writing, let's start reading
-        $self->set_nonblock($read_pipe);
+        return $osrf_msg if $osrf_msg;
 
-        while (1) {
-            # read all of the available data
-
-            my $buf = '';
-            my $nbytes = sysread($self->{pipe_to_parent}, $buf, $buf_size);
-
-            unless(defined $nbytes) {
-                if ($! != EAGAIN) {
-                    $logger->error("server: error reading data from parent: $!.  ".
-                        "bytes_needed=$bytes_needed; bytes_recvd=$bytes_recvd; data=$data");
-                    $read_error = 1;
-                }
-                last;
-            }
-
-            last if $nbytes <= 0; # no more data available for reading
-
-            $bytes_recvd += $nbytes;
-            $data .= $buf;
-        }
-
-        $self->set_block($self->{pipe_to_parent});
-        return undef if $read_error;
-
-        # extract the data size and remove the header from the final data
-        if ($first_read) {
-            my $wps_size = OpenSRF::Server::WRITE_PIPE_DATA_SIZE;
-            $bytes_needed = int(substr($data, 0, $wps_size)) + $wps_size;
-            $data = substr($data, $wps_size);
-            $first_read = 0;
-        }
-
-
-        if ($bytes_recvd == $bytes_needed) {
-            # we've read all the data. Nothing left to do
-            last;
-        }
-
-        $logger->info("server: child process read all available pipe data.  ".
-            "waiting for more data from parent.  bytes_needed=$bytes_needed; bytes_recvd=$bytes_recvd");
+        # Likely interrupted by a signal.  Loop around and try again.
     }
-
-    return $data;
 }
 
 
@@ -805,7 +678,7 @@ sub keepalive_loop {
 # Report our availability to our parent process
 # ----------------------------------------------------------------
 sub send_status {
-    my $self = shift;
+    my ($self, $status) = @_;
 
     for (0..2) {
 
@@ -813,8 +686,8 @@ sub send_status {
         local $SIG{'PIPE'} = sub { $self->{sig_pipe} = 1; };
 
         syswrite(
-            $self->{pipe_to_parent},
-            sprintf("%*s", OpenSRF::Server::STATUS_PIPE_DATA_SIZE, $self->{pid})
+            $self->{pipe_child_write},
+            sprintf("$status:%*s", OpenSRF::Server::STATUS_PIPE_DATA_SIZE, $self->{pid})
         );
 
         last unless $self->{sig_pipe};
