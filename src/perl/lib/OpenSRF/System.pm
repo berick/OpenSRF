@@ -105,7 +105,7 @@ sub run_service {
         if (OpenSRF::Application->application_implementation->can('initialize'));
 
     # kill the temp connection
-    OpenSRF::Transport::PeerHandle->retrieve->disconnect;
+    OpenSRF::Transport::PeerHandle->retrieve->reset;
     
     # if this service does not want stderr output, it will be redirected to /dev/null
     my $disable_stderr = $getval->('disable_stderr') || '';
@@ -128,8 +128,9 @@ sub run_service {
         # we only arrive here if the server died a painful death
         $logger->error("server: died with error $@");
         $server->cleanup(1);
-        $logger->info("server: restarting after fatal crash...");
-        sleep 2;
+        #$logger->info("server: restarting after fatal crash...");
+        #sleep 2;
+        exit;
     }
 }
 

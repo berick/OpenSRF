@@ -234,7 +234,7 @@ sub kill_child {
 # ----------------------------------------------------------------
 sub build_osrf_handle {
     my $self = shift;
-    OpenSRF::Transport::PeerHandle->construct('service', $self->{service});
+    OpenSRF::Transport::PeerHandle->construct('service', $self->{service}, 1);
     $self->{osrf_handle} = OpenSRF::Transport::PeerHandle->retrieve;
 }
 

@@ -9,6 +9,9 @@ use OpenSRF::Utils::Logger qw/$logger/;
 sub new {
     my ($class, $domain, $port, $username, $password, $max_queue) = @_;
 
+    $logger->debug("Creating new bus connection $domain:$port user=$username");
+    warn "Creating new bus connection $domain:$port user=$username\n";
+
     my $self = {
         domain => $domain || 'localhost',
         port => $port || 6379,
@@ -141,7 +144,7 @@ sub recv {
     my ($self, $timeout, $dest_stream) = @_;
     $dest_stream ||= $self->address;
 
-    $logger->debug("Waiting for content at " . $self->stream_name);
+    $logger->debug("Waiting for content at: $dest_stream");
 
     my @block;
     if ($timeout) {
