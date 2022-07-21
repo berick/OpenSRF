@@ -10,7 +10,6 @@ sub new {
     my ($class, $domain, $port, $username, $password, $max_queue) = @_;
 
     $logger->debug("Creating new bus connection $domain:$port user=$username");
-    warn "Creating new bus connection $domain:$port user=$username\n";
 
     my $self = {
         domain => $domain || 'localhost',
