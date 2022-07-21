@@ -75,7 +75,7 @@ sub bootstrap_client {
 
     load_bootstrap_config();
     OpenSRF::Utils::Logger::set_config(undef, $connection_type);
-    OpenSRF::Transport::PeerHandle->construct($app, $connection_type);
+    OpenSRF::Transport::PeerHandle->construct($connection_type);
 }
 
 sub connected {
