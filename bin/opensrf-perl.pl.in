@@ -332,7 +332,7 @@ sub do_init {
     my $apps = $sclient->config_value("activeapps", "appname");
 
     # disconnect the top-level network handle
-    OpenSRF::Transport::PeerHandle->retrieve->disconnect;
+    OpenSRF::Transport::PeerHandle->retrieve->reset;
 
     if($apps) {
         $apps = [$apps] unless ref $apps;
@@ -662,19 +662,20 @@ sub do_reset_message_bus {
         # Privileged clients can post message to all services and perform
         # delete operations to clear their own client: enpoints from 
         # (i.e. flush socket).
-        my $permissions = '-@all +xgroup +xadd +xreadgroup +xack +xtrim +del ~client:* ~service:*';
+        my $base_perms = '-@all +xgroup +xadd +xreadgroup +xack +xtrim +del';
+        my $permissions = "$base_perms ~opensrf:client:* ~opensrf:service:*";
         
         if (!$conf->{privileged}) {
             msg("Limiting bus access for non-privileged connection type=$type");
 
             # Unprivileged connections have access toa subset of the 
             # available (i.e. public) services.
-            $permissions = '-@all +xgroup +xadd +xreadgroup +xack +xtrim +del ~client:*';
+            $permissions = "$base_perms ~opensrf:client:*";
 
             # Non-privileged connections can only interact with public
             # service bus endpoints.
             for my $service (@{$base_conf->{public_services}->{service}}) {
-                $redis->acl('SETUSER', $username, "~service:$service");
+                $redis->acl('SETUSER', $username, "~opensrf:service:$service");
             }
         }
 

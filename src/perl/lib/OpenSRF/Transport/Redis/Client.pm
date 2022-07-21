@@ -18,9 +18,13 @@ my $_singleton;
 sub retrieve { return $_singleton; }
 
 sub new {
-    my ($class, $connection_type, $service) = @_;
+    my ($class, $connection_type, $service, $no_cache) = @_;
 
-    return $_singleton if $_singleton;
+    $logger->info("NEW single=$_singleton no_cache=$no_cache");
+
+    return $_singleton if $_singleton && !$no_cache;
+
+    $logger->debug("Creating new Redis::Client with type '$connection_type'");
 
     my $self = {
         service => $service,
@@ -32,16 +36,30 @@ sub new {
     my $conf = $self->bus_config;
 
     # Create a connection for our primary domain.
-    $self->add_connection($conf->{domain});
-    $self->{primary_domain} = $conf->{domain};
+    # The domain is equivalent to the hostname of the redis instance.
+    $self->add_connection($conf->{host});
+    $self->{primary_domain} = $conf->{host};
+
+    $logger->debug("Redis::Client has primary domain of " . $self->primary_domain);
 
     if ($service) {
         # If we're a service, this is where we listen for service-level requests.
         $self->{service_address} = "opensrf:service:$service";
     }
 
-    return $_singleton = $self;
+    $_singleton = $self unless $no_cache;
+
+    $logger->info("NEW ending with single=$_singleton");
+
+    return $self;
 }
+
+sub reset {                                                                    
+    return unless $_singleton;
+    $logger->debug("Resetting client $_singleton");
+    $_singleton->disconnect;
+    $_singleton = undef;
+} 
 
 sub bus_config {
     my $self = shift;
@@ -55,6 +73,9 @@ sub bus_config {
 
     $conf = $conf->{$con_type} or
         die "No '$con_type' connection in core configuration\n";
+    
+    $conf = $conf->{message_bus} or die 
+        "No message_bus config for connection type " . $self->connection_type . "\n";
 
     return $conf;
 }
@@ -69,6 +90,8 @@ sub add_connection {
 
     my $conf = $self->bus_config;
 
+    # Assumes other connection parameters are the same across
+    # Redis instances, apart from the hostname.
     my $connection = OpenSRF::Transport::Redis::BusConnection->new(
         $domain, 
         $conf->{port}, 
@@ -126,7 +149,7 @@ sub primary_connection {
     return $connections{$self->primary_domain};
 }
 
-sub disconnect_all {
+sub disconnect {
     my ($self, $domain) = @_;
 
     for my $domain (keys %connections) {
