@@ -20,8 +20,6 @@ sub retrieve { return $_singleton; }
 sub new {
     my ($class, $connection_type, $service, $no_cache) = @_;
 
-    $logger->info("NEW single=$_singleton no_cache=$no_cache");
-
     return $_singleton if $_singleton && !$no_cache;
 
     $logger->debug("Creating new Redis::Client with type '$connection_type'");
@@ -40,23 +38,19 @@ sub new {
     $self->add_connection($conf->{host});
     $self->{primary_domain} = $conf->{host};
 
-    $logger->debug("Redis::Client has primary domain of " . $self->primary_domain);
-
     if ($service) {
         # If we're a service, this is where we listen for service-level requests.
         $self->{service_address} = "opensrf:service:$service";
+        $self->create_service_stream;
     }
 
     $_singleton = $self unless $no_cache;
-
-    $logger->info("NEW ending with single=$_singleton");
 
     return $self;
 }
 
 sub reset {                                                                    
     return unless $_singleton;
-    $logger->debug("Resetting client $_singleton");
     $_singleton->disconnect;
     $_singleton = undef;
 } 
@@ -170,8 +164,7 @@ sub create_service_stream {
 
     eval { 
         # This gets mad when a stream / group already exists, 
-        # but Workers share a stream/group name when receiving 
-        # service-level requests
+        # but it's conceivable that it's already been created.
 
         $self->primary_connection->redis->xgroup(   
             'create',
