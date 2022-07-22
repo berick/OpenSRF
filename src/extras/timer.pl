@@ -14,8 +14,8 @@ my $test_service = "open-ils.storage";
 #my $test_service = "opensrf.settings";
 #my $test_service = "open-ils.cstore";
 
-my $iterations = 5000; 
-my $parallel = 3;
+my $iterations = 100; 
+my $parallel = 7;
 
 my $small_echo_data = <<TEXT;
     1237012938471029348170197908709870987098709870987098709809870987098709870

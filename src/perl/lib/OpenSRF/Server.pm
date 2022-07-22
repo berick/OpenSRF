@@ -41,7 +41,6 @@ sub new {
     $self->{routers}        = []; # list of registered routers
     $self->{active_list}    = []; # list of active children
     $self->{idle_list}      = []; # list of idle children
-    $self->{zombie_list}    = []; # list of reaped children to clean up
     $self->{sighup_pending} = [];
     $self->{pid_map}        = {}; # map of child pid to child for cleaner access
     $self->{sig_pipe}       = 0;  # true if last syswrite failed
@@ -155,9 +154,7 @@ sub run {
     # main server loop
     while (1) {
 
-        $self->squash_zombies;
         $self->check_status($wait_time);
-        $self->squash_zombies;
 
         if ($self->{child_died}) {
             # SIGCHLD caused check_status() to exit early.  Let our CHLD
@@ -169,7 +166,7 @@ sub run {
 
         my $changes = $self->perform_idle_maintenance;
 
-        if ($changes || @{$self->{zombie_list}}) {
+        if ($changes) {
 
             # Wake frequently when changes are happening since more
             # changes are likely coming.
@@ -229,6 +226,14 @@ sub kill_child {
     my $self = shift;
     my $child = shift || pop(@{$self->{idle_list}}) or return;
     $chatty and $logger->internal("server: killing child $child");
+
+    # Even though we only kill one child per perform_idle_maintenance(),
+    # the loop comes around fast enough that we end up killing batches
+    # of children fast enough to cause everything to lock up (at least
+    # on my test VM).  A tiny sleep here acts as a yield and gives 
+    # other processes a chance to act in between us killing children.
+    usleep(1); # 1 microsecond
+
     kill('TERM', $child->{pid});
 }
 
@@ -237,7 +242,7 @@ sub kill_child {
 # ----------------------------------------------------------------
 sub build_osrf_handle {
     my $self = shift;
-    $self->{osrf_handle} = 
+    $self->{osrf_handle} =
         OpenSRF::Transport::PeerHandle->construct('service', $self->{service}, 1);
 }
 
@@ -259,10 +264,11 @@ sub check_status {
         # in the previous iteration.
         my $read_set = IO::Select->new;
 
-        eval {
-            $read_set->add($_->{pipe_parent_read}) 
-                for (@{$self->{active_list}}, @{$self->{idle_list}});
-        };
+        my @actives = @{$self->{active_list}};
+        my @idles = @{$self->{idle_list}};
+
+        $read_set->add($_->{pipe_parent_read}) for 
+            grep {$_ && $_->{pipe_parent_read}} (@actives, @idles);
 
         if (my @handles = $read_set->can_read(($timeout < 0) ? undef : $timeout)) {
             my $status = '';
@@ -288,9 +294,9 @@ sub check_status {
 
     return unless @idles || @actives;
 
-    $chatty and $logger->internal(sub { 
+    $chatty && @idles && $logger->internal(sub { 
         return "server: ".scalar(@idles)." children reporting for duty: (@idles)" });
-    $chatty and $logger->internal(sub { 
+    $chatty && @actives && $logger->internal(sub { 
         return "server: ".scalar(@actives)." children starting work: (@actives)" });
 
     my $child;
@@ -345,33 +351,6 @@ sub check_status {
     }
 }
 
-# Finish destroying objects for reaped children
-# ----------------------------------------------------------------
-sub squash_zombies {
-    my $self = shift;
-    my $shutdown = shift;
-
-    my $squashed = 0;
-    while (my $child = shift @{$self->{zombie_list}}) {
-
-        my $pid = $child->{pid};
-        $self->{active_list} = [ grep { $_->{pid} != $pid } @{$self->{active_list}} ];
-        $self->{idle_list} = [ grep { $_->{pid} != $pid } @{$self->{idle_list}} ];
-
-        $self->{num_children}--;
-        delete $self->{pid_map}->{$pid};
-
-        close($child->{pipe_parent_read});
-        delete $child->{$_} for keys %$child; # destroy with a vengeance
-
-        $squashed++;
-    }
-
-    $chatty and $logger->internal("server: squashed $squashed zombies");
-
-    $self->spawn_children unless $shutdown;
-}
-
 # ----------------------------------------------------------------
 # Cleans up any child processes that have exited.
 # In shutdown mode, block until all children have washed ashore
@@ -389,16 +368,17 @@ sub reap_children {
 
         my $child = $self->{pid_map}->{$pid};
 
-        # since we may be in the middle of check_status(),
-        # stash the remnants of the child for later cleanup
-        # after check_status() has finished; otherwise, we may crash
-        # the parent with a "Use of freed value in iteration" error
-        push @{ $self->{zombie_list} }, $child;
+        $self->{active_list} = [ grep { $_->{pid} != $pid } @{$self->{active_list}} ];
+        $self->{idle_list} = [ grep { $_->{pid} != $pid } @{$self->{idle_list}} ];
+
+        $self->{num_children}--;
+        delete $self->{pid_map}->{$pid};
+
+        close($child->{pipe_parent_read});
+        delete $child->{$_} for keys %$child; # destroy with a vengeance
     }
 
-    # Clean up the children we just waitpid'ed above since we're
-    # completely done with them.
-    $self->squash_zombies(1) if $shutdown;
+    $self->spawn_children unless $shutdown;
 
     $chatty and $logger->internal(sub{return sprintf(
         "server: %d idle and %d active children after reap_children",
@@ -419,6 +399,7 @@ sub spawn_children {
 # ----------------------------------------------------------------
 sub spawn_child {
     my($self, $active) = @_;
+
 
     my $child = OpenSRF::Server::Child->new($self);
 
@@ -645,11 +626,21 @@ sub run {
         $0 = $orig_name;
     }
 
+    # TODO give the Client its own consumer delete sub.
+    $network->primary_connection->redis->xgroup(
+        'DELCONSUMER',
+        $network->service_address,
+        $network->service_address,
+        $network->primary_connection->address
+    );
+
     $chatty and $logger->internal(
         "server: child process shutting down after reaching max_requests");
 
     OpenSRF::Application->application_implementation->child_exit
         if (OpenSRF::Application->application_implementation->can('child_exit'));
+
+    $network->disconnect;
 }
 
 # ----------------------------------------------------------------
