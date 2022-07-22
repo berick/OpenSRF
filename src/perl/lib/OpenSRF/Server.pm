@@ -157,6 +157,7 @@ sub run {
 
         $self->squash_zombies;
         $self->check_status($wait_time);
+        $self->squash_zombies;
         $self->{child_died} = 0;
 
         if ($self->{child_died}) {
@@ -168,7 +169,7 @@ sub run {
 
         my $changes = $self->perform_idle_maintenance;
 
-        if ($changes) {
+        if ($changes || @{$self->{zombie_list}}) {
 
             # Wake frequently when changes are happening since more
             # changes are likely coming.
@@ -258,8 +259,10 @@ sub check_status {
         # in the previous iteration.
         my $read_set = IO::Select->new;
 
-        $read_set->add($_->{pipe_parent_read}) 
-            for (@{$self->{active_list}}, @{$self->{idle_list}});
+        eval {
+            $read_set->add($_->{pipe_parent_read}) 
+                for (@{$self->{active_list}}, @{$self->{idle_list}});
+        };
 
         if (my @handles = $read_set->can_read(($timeout < 0) ? undef : $timeout)) {
             my $status = '';
@@ -349,7 +352,17 @@ sub squash_zombies {
 
     my $squashed = 0;
     while (my $child = shift @{$self->{zombie_list}}) {
+
+        my $pid = $child->{pid};
+        $self->{active_list} = [ grep { $_->{pid} != $pid } @{$self->{active_list}} ];
+        $self->{idle_list} = [ grep { $_->{pid} != $pid } @{$self->{idle_list}} ];
+
+        $self->{num_children}--;
+        delete $self->{pid_map}->{$pid};
+
+        close($child->{pipe_parent_read});
         delete $child->{$_} for keys %$child; # destroy with a vengeance
+
         $squashed++;
     }
     $chatty and $logger->internal("server: squashed $squashed zombies");
@@ -372,13 +385,13 @@ sub reap_children {
 
         my $child = $self->{pid_map}->{$pid};
 
-        close($child->{pipe_parent_read});
+        #close($child->{pipe_parent_read});
 
-        $self->{active_list} = [ grep { $_->{pid} != $pid } @{$self->{active_list}} ];
-        $self->{idle_list} = [ grep { $_->{pid} != $pid } @{$self->{idle_list}} ];
+        #$self->{active_list} = [ grep { $_->{pid} != $pid } @{$self->{active_list}} ];
+        #$self->{idle_list} = [ grep { $_->{pid} != $pid } @{$self->{idle_list}} ];
 
-        $self->{num_children}--;
-        delete $self->{pid_map}->{$pid};
+        #$self->{num_children}--;
+        #delete $self->{pid_map}->{$pid};
 
         # since we may be in the middle of check_status(),
         # stash the remnants of the child for later cleanup
