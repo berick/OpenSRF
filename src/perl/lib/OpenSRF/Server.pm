@@ -228,10 +228,12 @@ sub kill_child {
     $chatty and $logger->internal("server: killing child $child");
 
     # Even though we only kill one child per perform_idle_maintenance(),
-    # the loop comes around fast enough that we end up killing batches
-    # of children fast enough to cause everything to lock up (at least
-    # on my test VM).  A tiny sleep here acts as a yield and gives 
-    # other processes a chance to act in between us killing children.
+    # the loop comes around fast enough that we can end up killing
+    # batches of children fast enough to cause everything to lock up
+    # (at least on my test VM under heavy parallel load).  A tiny sleep
+    # here acts as a yield and gives other processes a chance to act in
+    # between us killing children.  At least, that's my assumption,
+    # because it fixes the problem.
     usleep(1); # 1 microsecond
 
     kill('TERM', $child->{pid});
