@@ -156,13 +156,13 @@ sub run {
     while (1) {
 
         $self->squash_zombies;
-        $self->{child_died} = 0;
         $self->check_status($wait_time);
         $self->squash_zombies;
 
         if ($self->{child_died}) {
             # SIGCHLD caused check_status() to exit early.  Let our CHLD
             # handler do its thing before we do any more idle maintenance.
+            $self->{child_died} = 0;
             $wait_time = 1;
             next;
         }
@@ -237,8 +237,8 @@ sub kill_child {
 # ----------------------------------------------------------------
 sub build_osrf_handle {
     my $self = shift;
-    OpenSRF::Transport::PeerHandle->construct('service', $self->{service}, 1);
-    $self->{osrf_handle} = OpenSRF::Transport::PeerHandle->retrieve;
+    $self->{osrf_handle} = 
+        OpenSRF::Transport::PeerHandle->construct('service', $self->{service}, 1);
 }
 
 # ----------------------------------------------------------------
