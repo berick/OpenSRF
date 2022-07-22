@@ -7,7 +7,7 @@ use base qw/OpenSRF::Transport::Redis::Client/;
 
 sub construct {
     my ($class, $connection_type, $service, $no_cache) = @_;
-    __PACKAGE__->SUPER::new($connection_type, $service, $no_cache);
+    return __PACKAGE__->SUPER::new($connection_type, $service, $no_cache);
 }
 
 1;
