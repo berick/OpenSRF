@@ -349,6 +349,7 @@ sub check_status {
 # ----------------------------------------------------------------
 sub squash_zombies {
     my $self = shift;
+    my $shutdown = shift;
 
     my $squashed = 0;
     while (my $child = shift @{$self->{zombie_list}}) {
@@ -365,7 +366,10 @@ sub squash_zombies {
 
         $squashed++;
     }
+
     $chatty and $logger->internal("server: squashed $squashed zombies");
+
+    $self->spawn_children unless $shutdown;
 }
 
 # ----------------------------------------------------------------
@@ -376,7 +380,7 @@ sub reap_children {
     my($self, $shutdown) = @_;
     $self->{child_died} = 1;
 
-    while(1) {
+    while (1) {
 
         my $pid = waitpid(-1, ($shutdown) ? 0 : WNOHANG);
         last if $pid <= 0;
@@ -385,14 +389,6 @@ sub reap_children {
 
         my $child = $self->{pid_map}->{$pid};
 
-        #close($child->{pipe_parent_read});
-
-        #$self->{active_list} = [ grep { $_->{pid} != $pid } @{$self->{active_list}} ];
-        #$self->{idle_list} = [ grep { $_->{pid} != $pid } @{$self->{idle_list}} ];
-
-        #$self->{num_children}--;
-        #delete $self->{pid_map}->{$pid};
-
         # since we may be in the middle of check_status(),
         # stash the remnants of the child for later cleanup
         # after check_status() has finished; otherwise, we may crash
@@ -400,7 +396,9 @@ sub reap_children {
         push @{ $self->{zombie_list} }, $child;
     }
 
-    $self->spawn_children unless $shutdown;
+    # Clean up the children we just waitpid'ed above since we're
+    # completely done with them.
+    $self->squash_zombies(1) if $shutdown;
 
     $chatty and $logger->internal(sub{return sprintf(
         "server: %d idle and %d active children after reap_children",
