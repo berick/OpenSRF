@@ -44,17 +44,16 @@ the handler method on the message document.
 
 sub handler {
 	my $start_time = time();
-	my( $class, $service, $data ) = @_;
+	my ($class, $service, $msg) = @_;
 
-	$logger->transport( "Transport handler() received $data", INTERNAL );
+	my $remote_id = $msg->from;
+	my $sess_id	= $msg->thread;
+	my $body = $msg->body;
+	my $type = $msg->type;
 
-	my $remote_id	= $data->from;
-	my $sess_id	= $data->thread;
-	my $body	= $data->body;
-	my $type	= $data->type;
+    $logger->internal("Transport:handler() received message with thread: $sess_id");
 
-	$logger->set_osrf_xid($data->osrf_xid);
-
+	$logger->set_osrf_xid($msg->osrf_xid);
 
 	if (defined($type) and $type eq 'error') {
 		throw OpenSRF::EX::Session ("$remote_id IS NOT CONNECTED TO THE NETWORK!!!");
@@ -80,8 +79,10 @@ sub handler {
         }
 	} 
 
+    $logger->internal(
+        "Building app session with ses=$sess_id remote=$remote_id service=$service");
+
 	# Retrieve or build the app_session as appropriate (server_build decides which to do)
-	$logger->transport( "AppSession is valid or does not exist yet", INTERNAL );
 	$app_session = OpenSRF::AppSession->server_build( $sess_id, $remote_id, $service );
 
 	if( ! $app_session ) {

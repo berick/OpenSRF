@@ -41,6 +41,7 @@ sub new {
     $self->{routers}        = []; # list of registered routers
     $self->{active_list}    = []; # list of active children
     $self->{idle_list}      = []; # list of idle children
+    $self->{zombie_list}    = []; # list of reaped children to clean up
     $self->{sighup_pending} = [];
     $self->{pid_map}        = {}; # map of child pid to child for cleaner access
     $self->{sig_pipe}       = 0;  # true if last syswrite failed
@@ -154,8 +155,9 @@ sub run {
     # main server loop
     while (1) {
 
-        $self->{child_died} = 0;
+        $self->squash_zombies;
         $self->check_status($wait_time);
+        $self->{child_died} = 0;
 
         if ($self->{child_died}) {
             # SIGCHLD caused check_status() to exit early.  Let our CHLD
@@ -264,6 +266,10 @@ sub check_status {
             for my $pipe (@handles) {
                 sysread($pipe, $status, STATUS_PIPE_DATA_SIZE) or next;
 
+                $status =~ s/^\s+|\s+$//og;
+
+                $logger->internal("server: child sent status: $status");
+
                 my ($state, $pid) = split(/:/, $status);
                 
                 if ($state eq 'active') {
@@ -282,7 +288,7 @@ sub check_status {
     $chatty and $logger->internal(sub { 
         return "server: ".scalar(@idles)." children reporting for duty: (@idles)" });
     $chatty and $logger->internal(sub { 
-        return "server: ".scalar(@actives)." children start work: (@actives)" });
+        return "server: ".scalar(@actives)." children starting work: (@actives)" });
 
     my $child;
     my @new_actives;
@@ -336,6 +342,19 @@ sub check_status {
     }
 }
 
+# Finish destroying objects for reaped children
+# ----------------------------------------------------------------
+sub squash_zombies {
+    my $self = shift;
+
+    my $squashed = 0;
+    while (my $child = shift @{$self->{zombie_list}}) {
+        delete $child->{$_} for keys %$child; # destroy with a vengeance
+        $squashed++;
+    }
+    $chatty and $logger->internal("server: squashed $squashed zombies");
+}
+
 # ----------------------------------------------------------------
 # Cleans up any child processes that have exited.
 # In shutdown mode, block until all children have washed ashore
@@ -360,7 +379,12 @@ sub reap_children {
 
         $self->{num_children}--;
         delete $self->{pid_map}->{$pid};
-        delete $child->{$_} for keys %$child; # destroy with a vengeance
+
+        # since we may be in the middle of check_status(),
+        # stash the remnants of the child for later cleanup
+        # after check_status() has finished; otherwise, we may crash
+        # the parent with a "Use of freed value in iteration" error
+        push @{ $self->{zombie_list} }, $child;
     }
 
     $self->spawn_children unless $shutdown;
@@ -687,7 +711,7 @@ sub send_status {
 
         syswrite(
             $self->{pipe_child_write},
-            sprintf("$status:%*s", OpenSRF::Server::STATUS_PIPE_DATA_SIZE, $self->{pid})
+            sprintf("%*s", OpenSRF::Server::STATUS_PIPE_DATA_SIZE, "$status:" . $self->{pid})
         );
 
         last unless $self->{sig_pipe};

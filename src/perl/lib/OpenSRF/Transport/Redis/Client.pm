@@ -91,7 +91,7 @@ sub add_connection {
         $conf->{port}, 
         $conf->{username}, 
         $conf->{password},
-        $conf->{max_queue_size}
+        $conf->{max_queue_size} || 1000
     );
 
     $connection->set_address($self->service);
@@ -176,7 +176,7 @@ sub create_service_stream {
     };
 
     if ($@) {
-        $logger->debug("create_service_stream returned : $@");
+        $logger->debug("BUSYGROUP is OK => : $@");
     }
 }
 
@@ -236,7 +236,7 @@ sub process {
 
     return 0 unless $val;
 
-    return OpenSRF::Transport->handler($self->service, $val);
+    return OpenSRF::Transport->handler($self->service || 'client', $val);
 }
 
 # $timeout=0 means check for data without blocking
@@ -256,7 +256,7 @@ sub recv {
 
     $msg->msg_id($resp->{msg_id});
 
-    $logger->internal("recv() thread=" . $msg->thread);
+    $logger->internal("recv()'ed thread=" . $msg->thread);
 
     # The message body is doubly encoded as JSON.
     $msg->body(OpenSRF::Utils::JSON->perl2JSON($msg->body));
@@ -267,8 +267,10 @@ sub recv {
 
 sub flush_socket {
     my $self = shift;
-    # Remove all messages from the stream
-    $self->redis->xtrim($self->stream_name, 'MAXLEN', 0);
+    # Remove all messages from our personal stream
+    if (my $con = $self->primary_connection) {
+        $con->redis->xtrim($con->address, 'MAXLEN', 0);
+    }
     return 1;
 }
 

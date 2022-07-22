@@ -122,7 +122,7 @@ sub send {
     
     $logger->internal("send(): to=$dest_stream : $msg_json");
 
-    $self->redis->xadd(
+    my @params = (
         $dest_stream,
         'NOMKSTREAM',
         'MAXLEN', 
@@ -132,6 +132,12 @@ sub send {
         'message',                  # gotta call it something 
         $msg_json
     );
+
+    eval { $self->redis->xadd(@params) };
+
+    if ($@) {
+        $logger->error("XADD error: $@ : @params");
+    }
 }
 
 # $timeout=0 means check for data without blocking
@@ -153,7 +159,7 @@ sub recv {
         @block = (BLOCK => $timeout);
     }
 
-    my $packet = $self->redis->xreadgroup(
+    my @params = (
         GROUP => $dest_stream,
         $self->address,
         COUNT => 1,
@@ -162,6 +168,14 @@ sub recv {
         STREAMS => $dest_stream,
         '>' # new messages only
     );      
+
+    my $packet;
+    eval {$packet = $self->redis->xreadgroup(@params) };
+
+    if ($@) {
+        $logger->error("Redis XREADGROUP error: $@ : @params");
+        return undef;
+    }
 
     # Timed out waiting for data.
     return undef unless defined $packet;
