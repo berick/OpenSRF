@@ -156,9 +156,9 @@ sub run {
     while (1) {
 
         $self->squash_zombies;
+        $self->{child_died} = 0;
         $self->check_status($wait_time);
         $self->squash_zombies;
-        $self->{child_died} = 0;
 
         if ($self->{child_died}) {
             # SIGCHLD caused check_status() to exit early.  Let our CHLD
