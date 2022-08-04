@@ -123,10 +123,117 @@ int transport_con_disconnect(transport_con* con) {
 
 }
 
-transport_con_msg* transport_con_send(transport_con* con, char* msg_json, char* stream) {
+int transport_con_send(transport_con* con, char* msg_json, char* stream) {
+
+    osrfLogInternal(OSRF_LOG_MARK, "Sending to stream=%s: %s", stream, msg_json);
+
+    redisReply *reply = redisCommand(con->bus,
+        "XADD %s NOMKSTREAM MAXLEN ~ %d * message %s",
+        stream,
+        con->max_queue,
+        msg_json
+    );
+
+    if (handle_redis_error(reply, 
+        "XADD %s NOMKSTREAM MAXLEN ~ %d * message %s",
+        stream, con->max_queue, msg_json)) {
+
+        return 0;
+    }
+
+    freeReplyObject(reply);
+
+    return 1;
 }
 
 transport_con_msg* transport_con_recv(transport_con* con, int timeout, char* stream) {
+
+    if (stream == NULL) { stream = con->address; }
+
+    redisReply *reply, *tmp;
+    char *msg_id, *json;
+
+    if (timeout == 0) {
+
+        reply = redisCommand(con->bus, 
+            "XREADGROUP GROUP %s %s COUNT 1 STREAMS %s >",
+            stream, con->address, stream
+        );
+
+    } else {
+
+        if (timeout == -1) {
+            // Redis timeout 0 means block indefinitely
+            timeout = 0;
+        } else {
+            // Milliseconds
+            timeout *= 1000;
+        }
+
+        reply = redisCommand(con->bus, 
+            "XREADGROUP GROUP %s %s BLOCK %d COUNT 1 STREAMS %s >",
+            stream, con->address, timeout, stream
+        );
+    }
+
+    // Timeout or error
+    if (handle_redis_error(
+        reply,
+        "XREADGROUP GROUP %s %s %s COUNT 1 NOACK STREAMS %s >",
+        stream, con->address, "BLOCK X", stream
+    )) { return NULL; }
+
+    // Unpack the XREADGROUP response, which is a nest of arrays.
+    // These arrays are mostly 1 and 2-element lists, since we are 
+    // only reading one item on a single stream.
+    if (reply->type == REDIS_REPLY_ARRAY && reply->elements > 0) {
+        tmp = reply->element[0];
+
+        if (tmp->type == REDIS_REPLY_ARRAY && tmp->elements > 1) {
+            tmp = tmp->element[1];
+
+            if (tmp->type == REDIS_REPLY_ARRAY && tmp->elements > 0) {
+                tmp = tmp->element[0];
+
+                if (tmp->type == REDIS_REPLY_ARRAY && tmp->elements > 1) {
+                    redisReply *r1 = tmp->element[0];
+                    redisReply *r2 = tmp->element[1];
+
+                    if (r1->type == REDIS_REPLY_STRING) {
+                        msg_id = strdup(r1->str);
+                    }
+
+                    if (r2->type == REDIS_REPLY_ARRAY && r2->elements > 1) {
+                        // r2->element[0] is the message name, which we
+                        // currently don't use for anything.
+
+                        r2 = r2->element[1];
+
+                        if (r2->type == REDIS_REPLY_STRING) {
+                            json = strdup(r2->str);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    freeReplyObject(reply); // XREADGROUP
+
+    if (msg_id == NULL) {
+        // Read timed out. 'json' will also be NULL.
+        return NULL;
+    }
+
+    transport_con_msg* tcon_msg = safe_malloc(sizeof(transport_con_msg));
+    tcon_msg->msg_id = msg_id;
+    tcon_msg->msg_json = json;
+
+    freeReplyObject(reply); // XACK
+
+    osrfLogInternal(OSRF_LOG_MARK, "recv_one_chunk() read json: %s", json);
+
+    return tcon_msg;
 }
 
 void transport_con_flush_socket(transport_con* con) {

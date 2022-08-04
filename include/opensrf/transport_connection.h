@@ -46,7 +46,7 @@ int transport_con_connect(transport_con* con);
 
 int transport_con_disconnect(transport_con* con);
 
-transport_con_msg*  transport_con_send(transport_con* con, char* msg_json, char* stream);
+int transport_con_send(transport_con* con, char* msg_json, char* stream);
 
 transport_con_msg*  transport_con_recv(transport_con* con, int timeout, char* stream);
 
