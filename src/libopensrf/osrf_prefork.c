@@ -883,14 +883,14 @@ static void prefork_run( prefork_simple* forker ) {
 		if ( backlog_queue_size == 0 ) {
 			// Wait indefinitely for an input message
 			osrfLogDebug( OSRF_LOG_MARK, "Forker going into wait for data..." );
-			cur_msg = client_recv( forker->connection, -1 );
+			cur_msg = client_recv( forker->connection, -1, NULL );
 			received_from_network = 1;
 		} else {
 			// We have queued messages, which means all of our drones
 			// are occupied.  See if any new messages are available on the
 			// network while waiting up to 1 second to allow time for a drone
 			// to become available to handle the next request in the queue.
-			cur_msg = client_recv( forker->connection, 1 );
+			cur_msg = client_recv( forker->connection, 1, NULL );
 			if ( cur_msg != NULL )
 				received_from_network = 1;
 		}

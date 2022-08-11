@@ -66,7 +66,6 @@ int session_send_msg(transport_session* session, transport_message* message) {
 int session_wait(transport_session* session, int timeout) {
   if (session == a_client->session && timeout == -1) {
     transport_message* recvd_msg = message_init("body1", "subject1", "thread1", "recipient1", "sender1");
-    a_client->msg_q_head = recvd_msg;
     return 0;
   }
   else if (session == a_client->session && timeout > 0) {
@@ -85,10 +84,6 @@ START_TEST(test_transport_client_init)
   fail_unless(client_init(NULL, 1234, "some_path", 123) == NULL,
       "When given a NULL client arg, client_init should return NULL");
   transport_client *test_client = client_init("server", 1234, "unixpath", 123);
-  fail_unless(test_client->msg_q_head == NULL,
-      "client->msg_q_head should be NULL on new client creation");
-  fail_unless(test_client->msg_q_tail == NULL,
-      "client->msg_q_tail should be NULL on new client creation");
   fail_if(test_client->session == NULL,
       "client->session should not be NULL - it is initialized by a call to init_transport");
   //fail_unless(test_client->session->message_callback == client_message_handler,
@@ -150,16 +145,11 @@ START_TEST(test_transport_client_recv)
       "client_recv should return NULL if the client arg is NULL");
 
   //Message at head of queue
-  a_client->msg_q_head = a_message; //put a message at the head of the queue
   transport_message *msg = client_recv(a_client, 10);
   fail_if(msg == NULL,
       "client_recv should return a transport_message on success");
-  fail_unless(a_client->msg_q_head == NULL,
-      "client_recv should remove the message from client->msg_q_head if it is successful");
   fail_unless(msg->next == NULL,
       "client_recv should set msg->next to NULL");
-  fail_unless(a_client->msg_q_tail == NULL,
-      "client_recv should set client->msg_q_tail to NULL if there was only one message in the queue");
 
   //session_wait failure with no timeout
   transport_client* other_client = client_init("server2", 4321, "unixpath2", 321);
@@ -171,10 +161,6 @@ START_TEST(test_transport_client_recv)
   transport_message *msg3 = client_recv(a_client, -1);
   fail_unless(msg3->next == NULL,
       "client_recv should set msg->next to NULL");
-  fail_unless(a_client->msg_q_head == NULL,
-      "client_recv should set client->msg_q_head to NULL if there are no more queued messages");
-  fail_unless(a_client->msg_q_tail == NULL,
-      "client_recv should set client->msg_q_tail to NULL if client->msg_q_head was NULL");
   fail_unless(strcmp(msg3->body, "body1") == 0,
       "the message returned by client_recv should contain the contents of the message that was received");
   fail_unless(strcmp(msg3->subject, "subject1") == 0,

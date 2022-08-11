@@ -451,7 +451,7 @@ int osrf_system_bootstrap_common(const char* config_file,
 	osrfLogInfo( OSRF_LOG_MARK, "Bootstrapping system with host %s, port %d, and unixpath %s",
 		host, iport, unixpath ? unixpath : "(none)" );
 
-	transport_client* client = client_init(host, iport, unixpath);
+	transport_client* client = client_init(host, iport);
 
     if (appname == NULL) { appname = "client"; }
 

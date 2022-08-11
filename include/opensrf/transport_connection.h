@@ -20,9 +20,6 @@ extern "C" {
 struct transport_con_struct {
     char* address;
     char* domain;
-    int port;
-    char* username;
-    char* password;
     int max_queue;
     redisContext* bus;
 };
@@ -34,25 +31,29 @@ struct transport_con_msg_struct {
 };
 typedef struct transport_con_msg_struct transport_con_msg;
 
-transport_con* transport_con_new(char* domain, int port, char* username, char* password);
+transport_con* transport_con_new(const char* domain);
 
 void transport_con_free(transport_con* con);
+void transport_con_msg_free(transport_con_msg* msg);
 
 int transport_con_connected(transport_con* con);
 
-void transport_con_set_address(transport_con* con, char* service);
+void transport_con_set_address(transport_con* con, const char* service);
 
-int transport_con_connect(transport_con* con);
+int transport_con_connect(transport_con* con, 
+    int port, const char* username, const char* password);
 
 int transport_con_disconnect(transport_con* con);
 
-int transport_con_send(transport_con* con, char* msg_json, char* stream);
+int transport_con_send(transport_con* con, const char* msg_json, const char* stream);
 
-transport_con_msg*  transport_con_recv(transport_con* con, int timeout, char* stream);
+transport_con_msg* transport_con_recv_once(transport_con* con, int timeout, const char* stream);
+
+transport_con_msg* transport_con_recv(transport_con* con, int timeout, const char* stream);
 
 void transport_con_flush_socket(transport_con* con);
 
-int handle_redis_error(redisReply *reply, char* command, ...);
+int handle_redis_error(redisReply *reply, const char* command, ...);
 
 
 #ifdef __cplusplus
