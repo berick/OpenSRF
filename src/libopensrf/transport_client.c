@@ -3,6 +3,9 @@
 transport_client* client_init(const char* domain, 
     int port, const char* username, const char* password) {
 
+    osrfLogInfo(OSRF_LOG_MARK, 
+        "client_init domain=%s port=%d username=%s", domain, port, username);
+
 	transport_client* client = safe_malloc(sizeof(transport_client));
     client->primary_domain = strdup(domain);
     client->connections = osrfNewHash();
@@ -28,6 +31,8 @@ static transport_con* client_connect_common(
     osrfLogInfo(OSRF_LOG_MARK, "Connecting to domain: %s", domain);
 
     transport_con* con = transport_con_new(domain);
+
+    osrfLogInfo(OSRF_LOG_MARK, "Connecting to domain: %s PART 2", domain);
 
     osrfHashSet(client->connections, (char*) domain, (void*) con);
 
@@ -70,6 +75,8 @@ int client_connect_as_service(transport_client* client, const char* service) {
 
     client->primary_connection = con;
 
+    transport_con_make_stream(con, client->service_address);
+
     return transport_con_connect(
         con, client->port, client->username, client->password);
 }
@@ -89,18 +96,22 @@ int client_connect(transport_client* client) {
 // Disconnect all connections and remove them from the connections hash.
 int client_disconnect(transport_client* client) {
 
+    osrfLogDebug(OSRF_LOG_MARK, "Disconnecting all transport connections");
+
     osrfHashIterator* iter = osrfNewHashIterator(client->connections);
 
-    while (1) {
-        transport_con* con = (transport_con*) osrfHashIteratorNext(iter);
+    transport_con* con;
 
-        if (con == NULL) { break; }
-
+    while( (con = (transport_con*) osrfHashIteratorNext(iter)) ) {
         osrfLogInfo(OSRF_LOG_MARK, "Disconnecting from domain: %s", con->domain);
-
         transport_con_disconnect(con);
         transport_con_free(con);
     }
+
+    osrfHashIteratorFree(iter);
+    osrfHashFree(client->connections);
+
+    client->connections = osrfNewHash();
 
     return 1;
 }
@@ -131,17 +142,29 @@ static char* get_domain_from_address(const char* address) {
 int client_send_message(transport_client* client, transport_message* msg) {
 	if (client == NULL || client->error) { return -1; }
 
-    char* domain = get_domain_from_address(msg->recipient);
+    transport_con* con;
 
-    if (!domain) { return -1; }
+    if (strstr(msg->recipient, "opensrf:client")) {
+        // We may be talking to a worker that runs on a remote domain.
+        // Find or create a connection to the domain.
 
-    transport_con* con = get_transport_con(client, domain);
+        char* domain = get_domain_from_address(msg->recipient);
 
-    if (!con) {
-        osrfLogError(
-            OSRF_LOG_MARK, "Error creating connection for domain: %s", domain);
+        if (!domain) { return -1; }
+
+        con = get_transport_con(client, domain);
+
+        if (!con) {
+            osrfLogError(
+                OSRF_LOG_MARK, "Error creating connection for domain: %s", domain);
+
+            return -1;
+        }
+
+    } else {
+        con = client->primary_connection;
     }
-    
+        
 	if (msg->sender) { free(msg->sender); }
 	msg->sender = strdup(con->address);
 
@@ -159,9 +182,8 @@ int client_send_message(transport_client* client, transport_message* msg) {
 
 transport_message* client_recv_stream(transport_client* client, int timeout, const char* stream) {
 
-	if (client == NULL || client->primary_connection == NULL) { return NULL; }
-
-    if (stream == NULL) { stream = client->primary_connection->address; }
+    osrfLogInternal(OSRF_LOG_MARK, 
+        "client_recv_stream timeout=%d stream=%s", timeout, stream);
 
     transport_con_msg* con_msg = 
         transport_con_recv(client->primary_connection, timeout, stream);
@@ -181,6 +203,13 @@ transport_message* client_recv_stream(transport_client* client, int timeout, con
 transport_message* client_recv(transport_client* client, int timeout) {
 
     return client_recv_stream(client, timeout, client->primary_connection->address);
+}
+
+transport_message* client_recv_for_service(transport_client* client, int timeout) {
+
+    osrfLogInternal(OSRF_LOG_MARK, "Receiving for service %s", client->service);
+
+    return client_recv_stream(client, timeout, client->service_address);
 }
 
 /**
@@ -205,6 +234,9 @@ int client_free( transport_client* client ) {
 int client_discard( transport_client* client ) {
 
 	if (client == NULL) { return 0; }
+
+    osrfLogInternal(OSRF_LOG_MARK, 
+        "Discarding client on domain %s", client->primary_domain);
 
 	if (client->primary_domain) { free(client->primary_domain); }
 	if (client->service) { free(client->service); }

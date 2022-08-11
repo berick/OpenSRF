@@ -10,12 +10,12 @@ use Time::HiRes qw/time/;
 # Testing with Evergreen storage service by default.
 # I tried using opensrf.settings but for reasons I didn't investigate
 # hitting opensrf.settings with lots of requests lead to failures.
-my $test_service = "open-ils.storage";
+#my $test_service = "open-ils.storage";
 #my $test_service = "opensrf.settings";
-#my $test_service = "open-ils.cstore";
+my $test_service = "open-ils.cstore";
 
-my $iterations = 100; 
-my $parallel = 7;
+my $iterations = 1; 
+my $parallel = 1;
 
 my $small_echo_data = <<TEXT;
     1237012938471029348170197908709870987098709870987098709809870987098709870

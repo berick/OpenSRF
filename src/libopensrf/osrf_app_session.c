@@ -584,7 +584,7 @@ osrfAppSession* osrfAppSessionClientInit( const char* remote_service ) {
     */
 
     growing_buffer *buf = buffer_init(32);
-    buffer_add(buf, "service:");
+    buffer_add(buf, "opensrf:service:");
     buffer_add(buf, remote_service);
 
 	session->remote_id = buffer_release(buf);

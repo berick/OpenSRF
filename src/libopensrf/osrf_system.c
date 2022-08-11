@@ -206,6 +206,22 @@ int osrf_system_service_ctrl(
         sleep(1);
     }
 
+    // -=--------
+    osrfLogInfo(OSRF_LOG_MARK, "Global client domain %s", osrfGlobalTransportClient->primary_domain);
+    osrfLogInfo(OSRF_LOG_MARK, "Global client connection count: %d", osrfHashGetCount(osrfGlobalTransportClient->connections));
+
+    osrfHashIterator* iter = osrfNewHashIterator(osrfGlobalTransportClient->connections);
+
+    transport_con* con;
+
+    while( (con = (transport_con*) osrfHashIteratorNext(iter)) ) {
+        osrfLogInfo(OSRF_LOG_MARK, "DOMAIN: %s", con->domain);
+    }
+
+    osrfHashIteratorFree(iter);
+    // -=--------
+
+
     // all done talking to the network
     osrf_system_disconnect_client();
 
@@ -448,12 +464,10 @@ int osrf_system_bootstrap_common(const char* config_file,
 		return 0;
 	}
 
-	osrfLogInfo( OSRF_LOG_MARK, "Bootstrapping system with host %s, port %d, and unixpath %s",
-		host, iport, unixpath ? unixpath : "(none)" );
+	osrfLogInfo(OSRF_LOG_MARK, 
+        "Bootstrapping system with host %s, port %d", host, iport);
 
 	transport_client* client = client_init(host, iport, username, password);
-
-    if (appname == NULL) { appname = "client"; }
 
     if (is_service) {
 	    if (client_connect_as_service(client, appname)) {
@@ -473,6 +487,21 @@ int osrf_system_bootstrap_common(const char* config_file,
 	free(password);
 	free(port);
 	free(unixpath);
+
+    // TODO
+    osrfHashIterator* iter = osrfNewHashIterator(osrfGlobalTransportClient->connections);
+
+    osrfLogInfo(OSRF_LOG_MARK, "PRIMARY DOMAIN: %s", osrfGlobalTransportClient->primary_connection->domain);
+
+    transport_con* con;
+
+    while( (con = (transport_con*) osrfHashIteratorNext(iter)) ) {
+        osrfLogInfo(OSRF_LOG_MARK, "DOMAIN: %s", con->domain);
+    }
+
+    osrfHashIteratorFree(iter);
+    // TODO
+
 
 	if(osrfGlobalTransportClient)
 		return 1;

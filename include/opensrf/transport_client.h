@@ -60,6 +60,7 @@ int client_connected( const transport_client* client );
 
 transport_message* client_recv_stream(transport_client* client, int timeout, const char* stream);
 transport_message* client_recv(transport_client* client, int timeout);
+transport_message* client_recv_for_service(transport_client* client, int timeout);
 
 int client_sock_fd( transport_client* client );
 

@@ -1,14 +1,20 @@
 #include <opensrf/transport_connection.h>
 
 transport_con* transport_con_new(const char* domain) {
+    osrfLogInfo(OSRF_LOG_MARK, "HERE 1");
     if (domain == NULL) { return NULL; }
 
     transport_con* con = safe_malloc(sizeof(transport_con));
+    osrfLogInfo(OSRF_LOG_MARK, "HERE 2");
 
     con->bus = NULL;
     con->address = NULL;
     con->domain = strdup(domain);
+    osrfLogInfo(OSRF_LOG_MARK, "HERE 3");
     con->max_queue = 1000; // TODO pull from config
+
+    osrfLogInternal(OSRF_LOG_MARK, 
+        "Created transport connection with domain: %s", con->domain);
 
     return con;
 }
@@ -24,6 +30,9 @@ void transport_con_msg_free(transport_con_msg* msg) {
 
 void transport_con_free(transport_con* con) {
     if (con == NULL) { return; }
+
+    osrfLogInternal(
+        OSRF_LOG_MARK, "Freeing transport connection for %s", con->domain);
 
     if (con->bus) { free(con->bus); }
     if (con->address) { free(con->address); }
@@ -80,7 +89,7 @@ int transport_con_connect(
 
     if (con->bus == NULL) {
         osrfLogError(OSRF_LOG_MARK, "Could not connect to Redis instance");
-        return -1;
+        return 0;
     }
 
     osrfLogDebug(OSRF_LOG_MARK, "Connected to Redis instance OK");
@@ -89,31 +98,36 @@ int transport_con_connect(
         redisCommand(con->bus, "AUTH %s %s", username, password);
 
     if (handle_redis_error(reply, "AUTH %s %s", username, password)) { 
-        return -1; 
+        return 0; 
     }
 
     freeReplyObject(reply);
 
-    reply = redisCommand(
+    return transport_con_make_stream(con, con->address);
+}
+
+int transport_con_make_stream(transport_con* con, const char* stream) {
+
+    redisReply *reply = redisCommand(
         con->bus, 
         "XGROUP CREATE %s %s $ mkstream", 
-        con->address,
-        con->address,
+        stream,
+        stream,
         "$",
         "mkstream"
     );
 
     if (handle_redis_error(reply, 
         "XGROUP CREATE %s %s $ mkstream", 
-        con->address,
-        con->address,
+        stream,
+        stream,
         "$",
         "mkstream"
-    )) { return -1; }
+    )) { return 0; }
 
     freeReplyObject(reply);
 
-    return 0;
+    return 1;
 }
 
 int transport_con_disconnect(transport_con* con) {
@@ -237,8 +251,6 @@ transport_con_msg* transport_con_recv_once(transport_con* con, int timeout, cons
     transport_con_msg* tcon_msg = safe_malloc(sizeof(transport_con_msg));
     tcon_msg->msg_id = msg_id;
     tcon_msg->msg_json = json;
-
-    freeReplyObject(reply); // XACK
 
     osrfLogInternal(OSRF_LOG_MARK, "recv_one_chunk() read json: %s", json);
 
