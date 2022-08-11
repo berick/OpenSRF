@@ -451,16 +451,16 @@ int osrf_system_bootstrap_common(const char* config_file,
 	osrfLogInfo( OSRF_LOG_MARK, "Bootstrapping system with host %s, port %d, and unixpath %s",
 		host, iport, unixpath ? unixpath : "(none)" );
 
-	transport_client* client = client_init(host, iport);
+	transport_client* client = client_init(host, iport, username, password);
 
     if (appname == NULL) { appname = "client"; }
 
     if (is_service) {
-	    if (client_connect_as_service(client, appname, username, password)) {
+	    if (client_connect_as_service(client, appname)) {
 		    osrfGlobalTransportClient = client;
 	    }
     } else {
-	    if (client_connect(client, appname, username, password)) {
+	    if (client_connect(client)) {
 		    osrfGlobalTransportClient = client;
 	    }
     }

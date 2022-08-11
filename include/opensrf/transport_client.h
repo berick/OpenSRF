@@ -42,12 +42,11 @@ struct transport_client_struct {
 };
 typedef struct transport_client_struct transport_client;
 
-transport_client* client_init(const char* server, int port);
+transport_client* client_init(const char* server, 
+    int port, const char* username, const char* password);
 
-int client_connect_as_service(transport_client* client, 
-    const char* appname, const char* username, const char* password); 
-int client_connect(transport_client* client, 
-    const char* appname, const char* username, const char* password); 
+int client_connect_as_service(transport_client* client, const char* service);
+int client_connect(transport_client* client); 
 
 int client_disconnect( transport_client* client );
 
@@ -59,7 +58,8 @@ int client_send_message( transport_client* client, transport_message* msg );
 
 int client_connected( const transport_client* client );
 
-transport_message* client_recv(transport_client* client, int timeout, const char* stream);
+transport_message* client_recv_stream(transport_client* client, int timeout, const char* stream);
+transport_message* client_recv(transport_client* client, int timeout);
 
 int client_sock_fd( transport_client* client );
 

@@ -1,6 +1,7 @@
 #include <opensrf/transport_client.h>
 
-transport_client* client_init(const char* domain, int port) {
+transport_client* client_init(const char* domain, 
+    int port, const char* username, const char* password) {
 
 	transport_client* client = safe_malloc(sizeof(transport_client));
     client->primary_domain = strdup(domain);
@@ -10,8 +11,9 @@ transport_client* client_init(const char* domain, int port) {
 	client->service = NULL;
 	client->service_address = NULL;
 
-    client->username = NULL;
-    client->password = NULL;
+    client->username = username ? strdup(username) : NULL;
+    client->password = password ? strdup(password) : NULL;
+
     client->port = port;
     client->primary_connection = NULL;
 
@@ -20,11 +22,8 @@ transport_client* client_init(const char* domain, int port) {
 	return client;
 }
 
-static transport_con* client_connect_common(transport_client* client, 
-    const char* domain, const char* username, const char* password) {
-
-    if (username) { client->username = strdup(username); }
-    if (password) { client->password = strdup(password); }
+static transport_con* client_connect_common(
+    transport_client* client, const char* domain) {
 
     transport_con* con = transport_con_new(domain);
 
@@ -43,17 +42,18 @@ static transport_con* get_transport_con(transport_client* client, const char* do
     // If we don't have the a connection for the requested domain,
     // it means we're setting up a connection to a remote domain.
 
-    con = client_connect_common(client, domain, NULL, NULL);
+    con = client_connect_common(client, domain);
 
     transport_con_set_address(con, NULL);
 
     // Connections to remote domains assume the same connection
     // attributes apply.
-    return transport_con_connect(con, client->port, client->username, client->password);
+    transport_con_connect(con, client->port, client->username, client->password);
+
+    return con;
 }
 
-int client_connect_as_service(transport_client* client,
-	const char* service, const char* username, const char* password) {
+int client_connect_as_service(transport_client* client, const char* service) {
 
     growing_buffer* buf = buffer_init(32);
 
@@ -62,27 +62,26 @@ int client_connect_as_service(transport_client* client,
     client->service_address = buffer_release(buf);
     client->service = strdup(service);
 
-    transport_con* con = client_connect_common(
-        client, client->primary_domain, username, password);
+    transport_con* con = client_connect_common(client, client->primary_domain);
 
     transport_con_set_address(con, service);
 
     client->primary_connection = con;
 
-    return transport_con_connect(con, client->port, username, password);
+    return transport_con_connect(
+        con, client->port, client->username, client->password);
 }
 
-int client_connect(
-    transport_client* client, const char* username, const char* password) {
+int client_connect(transport_client* client) {
 
-    transport_con* con = client_connect_common(
-        client, client->primary_domain, username, password);
+    transport_con* con = client_connect_common(client, client->primary_domain);
 
     transport_con_set_address(con, NULL);
 
     client->primary_connection = con;
 
-    return transport_con_connect(con, client->port, username, password);
+    return transport_con_connect(
+        con, client->port, client->username, client->password);
 }
 
 // Disconnect all connections and remove them from the connections hash.
@@ -147,17 +146,18 @@ int client_send_message(transport_client* client, transport_message* msg) {
     osrfLogInternal(OSRF_LOG_MARK, 
         "client_send_message() to=%s %s", msg->recipient, msg->msg_json);
 
-    return transport_con_send(con, char* msg->msg_json, msg->recipient);
+    return transport_con_send(con, msg->msg_json, msg->recipient);
 
     osrfLogInternal(OSRF_LOG_MARK, "client_send_message() send completed");
     
     return 0;
 }
 
-transport_message* client_recv(transport_client* client, int timeout, const char* stream) {
-	if (client == NULL || client->bus == NULL) { return NULL; }
+transport_message* client_recv_stream(transport_client* client, int timeout, const char* stream) {
 
-    if (stream == NULL) { stream = client->address; }
+	if (client == NULL || client->primary_connection == NULL) { return NULL; }
+
+    if (stream == NULL) { stream = client->primary_connection->address; }
 
     transport_con_msg* con_msg = 
         transport_con_recv(client->primary_connection, timeout, stream);
@@ -172,6 +172,11 @@ transport_message* client_recv(transport_client* client, int timeout, const char
         "client_recv() read response for thread %s", msg->thread);
 
 	return msg;
+}
+
+transport_message* client_recv(transport_client* client, int timeout) {
+
+    return client_recv_stream(client, timeout, client->primary_connection->address);
 }
 
 /**
