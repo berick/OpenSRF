@@ -1,6 +1,6 @@
 #include <opensrf/transport_connection.h>
 
-transport_con* transport_con_new(char* domain, int port, char* username, char* password) {
+transport_con* transport_con_new(const char* domain) {
     if (domain == NULL) { return NULL; }
 
     transport_con* con = safe_malloc(sizeof(transport_con));
@@ -8,30 +8,35 @@ transport_con* transport_con_new(char* domain, int port, char* username, char* p
     con->bus = NULL;
     con->address = NULL;
     con->domain = strdup(domain);
-    con->port = port;
     con->max_queue = 1000; // TODO pull from config
-
-    if (username) { con->username = strdup(username); }
-    if (password) { con->password = strdup(password); }
 }
 
-void transport_con_free(transport_con* con) {
-
+void transport_con_msg_free(transport_con* con) {
    if (con == NULL) { return; } 
-   if (con->bus != NULL) { free(con->bus); }
-   if (con->address != NULL) { free(con->address); }
-   if (con->domain != NULL) { free(con->domain); }
-   if (con->username != NULL) { free(con->username); }
-   if (con->password != NULL) { free(con->password); }
+
+   if (con->bus) { free(con->bus); }
+   if (con->address) { free(con->address); }
+   if (con->domain) { free(con->domain); }
 
    free(con);
+}
+
+
+void transport_con_free(transport_con* con) {
+    if (con == NULL) { return; }
+
+    if (con->bus) { free(con->bus); }
+    if (con->address) { free(con->address); }
+    if (con->domain) { free(con->domain); }
+
+    free(con);
 }
 
 int transport_con_connected(transport_con* con) {
     return con->bus != NULL; // TODO is there a redis check?
 } 
 
-void transport_con_set_address(transport_con* con, char* service) {
+void transport_con_set_address(transport_con* con, const char* service) {
 
     char hostname[1024];
     hostname[1023] = '\0';
@@ -58,31 +63,31 @@ void transport_con_set_address(transport_con* con, char* service) {
     con->address = buffer_release(buf);
 }
 
-int transport_con_connect(transport_con* con) {
-    if (con == NULL) { return 0; }
+int transport_con_connect(
+    transport_con* con, int port, const char* username, const char* password) {
 
     osrfLogDebug(OSRF_LOG_MARK, "Transport con connecting with bus "
         "domain=%s; address=%s; port=%d; username=%s", 
         con->domain,
         con->address,
-        con->port, 
-        con->username
+        port, 
+        username
     );
 
     con->bus = redisConnect(con->domain, con->port);
 
     if (con->bus == NULL) {
         osrfLogError(OSRF_LOG_MARK, "Could not connect to Redis instance");
-        return 0;
+        return -1;
     }
 
     osrfLogDebug(OSRF_LOG_MARK, "Connected to Redis instance OK");
 
     redisReply *reply = 
-        redisCommand(con->bus, "AUTH %s %s", con->username, con->password);
+        redisCommand(con->bus, "AUTH %s %s", username, password);
 
-    if (handle_redis_error(reply, "AUTH %s %s", con->username, con->password)) { 
-        return 0; 
+    if (handle_redis_error(reply, "AUTH %s %s", username, password)) { 
+        return -1; 
     }
 
     freeReplyObject(reply);
@@ -102,13 +107,13 @@ int transport_con_connect(transport_con* con) {
         con->address,
         "$",
         "mkstream"
-    )) { return 0; }
+    )) { return -1; }
 
     freeReplyObject(reply);
 }
 
 int transport_con_disconnect(transport_con* con) {
-    if (con == NULL || con->bus == NULL) { return 0; }
+    if (con == NULL || con->bus == NULL) { return -1; }
 
     redisReply *reply = redisCommand(con->bus, "DEL %s", con->address);
 
@@ -119,11 +124,11 @@ int transport_con_disconnect(transport_con* con) {
     redisFree(con->bus);
     con->bus = NULL;
 
-    return 1;
+    return 0;
 
 }
 
-int transport_con_send(transport_con* con, char* msg_json, char* stream) {
+int transport_con_send(transport_con* con, const char* msg_json, const char* stream) {
 
     osrfLogInternal(OSRF_LOG_MARK, "Sending to stream=%s: %s", stream, msg_json);
 
@@ -138,15 +143,15 @@ int transport_con_send(transport_con* con, char* msg_json, char* stream) {
         "XADD %s NOMKSTREAM MAXLEN ~ %d * message %s",
         stream, con->max_queue, msg_json)) {
 
-        return 0;
+        return -1;
     }
 
     freeReplyObject(reply);
 
-    return 1;
+    return 0;
 }
 
-transport_con_msg* transport_con_recv(transport_con* con, int timeout, char* stream) {
+transport_con_msg* transport_con_recv_once(transport_con* con, int timeout, const char* stream) {
 
     if (stream == NULL) { stream = con->address; }
 
@@ -236,12 +241,45 @@ transport_con_msg* transport_con_recv(transport_con* con, int timeout, char* str
     return tcon_msg;
 }
 
+
+transport_con_msg* transport_con_recv(transport_con* con, int timeout, const char* stream) {
+
+    if (timeout == 0) {
+        return transport_con_send(con, 0, stream);
+
+    } else if (timeout < 0) {
+        // Keep trying until we have a result.
+
+        while (1) {
+            transport_con_msg* msg = transport_con_send(con, 0, stream);
+            if (msg != NULL) { return msg; }
+        }
+    }
+
+    time_t seconds = (time_t) timeout;
+
+    while (seconds > 0) {
+        // Keep trying until we get a response or our timeout is exhausted.
+
+        time_t now = time(NULL);
+        transport_con_msg* msg = transport_con_send(con, timeout, stream);
+
+        if (msg == NULL) {
+            seconds -= now;
+        } else {
+            return msg;
+        }
+    }
+
+    return NULL;
+}
+
 void transport_con_flush_socket(transport_con* con) {
 }
 
-// Returns the reply on success, NULL on error
+// Returns false/0 on success, true/1 on failure.
 // On error, the reply is freed.
-int handle_redis_error(redisReply *reply, char* command, ...) {
+int handle_redis_error(redisReply *reply, const char* command, ...) {
 
     if (reply != NULL && reply->type != REDIS_REPLY_ERROR) {
         return 0;
