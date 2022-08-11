@@ -11,14 +11,13 @@ transport_con* transport_con_new(const char* domain) {
     con->max_queue = 1000; // TODO pull from config
 }
 
-void transport_con_msg_free(transport_con* con) {
-   if (con == NULL) { return; } 
+void transport_con_msg_free(transport_con_msg* msg) {
+   if (msg == NULL) { return; } 
 
-   if (con->bus) { free(con->bus); }
-   if (con->address) { free(con->address); }
-   if (con->domain) { free(con->domain); }
+    if (msg->msg_id) { free(msg->msg_id); }
+    if (msg->msg_json) { free(msg->msg_json); }
 
-   free(con);
+   free(msg);
 }
 
 
@@ -74,7 +73,7 @@ int transport_con_connect(
         username
     );
 
-    con->bus = redisConnect(con->domain, con->port);
+    con->bus = redisConnect(con->domain, port);
 
     if (con->bus == NULL) {
         osrfLogError(OSRF_LOG_MARK, "Could not connect to Redis instance");
@@ -245,13 +244,13 @@ transport_con_msg* transport_con_recv_once(transport_con* con, int timeout, cons
 transport_con_msg* transport_con_recv(transport_con* con, int timeout, const char* stream) {
 
     if (timeout == 0) {
-        return transport_con_send(con, 0, stream);
+        return transport_con_recv_once(con, 0, stream);
 
     } else if (timeout < 0) {
         // Keep trying until we have a result.
 
         while (1) {
-            transport_con_msg* msg = transport_con_send(con, 0, stream);
+            transport_con_msg* msg = transport_con_recv_once(con, -1, stream);
             if (msg != NULL) { return msg; }
         }
     }
@@ -262,7 +261,7 @@ transport_con_msg* transport_con_recv(transport_con* con, int timeout, const cha
         // Keep trying until we get a response or our timeout is exhausted.
 
         time_t now = time(NULL);
-        transport_con_msg* msg = transport_con_send(con, timeout, stream);
+        transport_con_msg* msg = transport_con_recv_once(con, timeout, stream);
 
         if (msg == NULL) {
             seconds -= now;
