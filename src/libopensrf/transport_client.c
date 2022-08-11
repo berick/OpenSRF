@@ -25,6 +25,8 @@ transport_client* client_init(const char* domain,
 static transport_con* client_connect_common(
     transport_client* client, const char* domain) {
 
+    osrfLogInfo(OSRF_LOG_MARK, "Connecting to domain: %s", domain);
+
     transport_con* con = transport_con_new(domain);
 
     osrfHashSet(client->connections, (char*) domain, (void*) con);
@@ -93,6 +95,8 @@ int client_disconnect(transport_client* client) {
         transport_con* con = (transport_con*) osrfHashIteratorNext(iter);
 
         if (con == NULL) { break; }
+
+        osrfLogInfo(OSRF_LOG_MARK, "Disconnecting from domain: %s", con->domain);
 
         transport_con_disconnect(con);
         transport_con_free(con);
