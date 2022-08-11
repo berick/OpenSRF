@@ -9,6 +9,8 @@ transport_con* transport_con_new(const char* domain) {
     con->address = NULL;
     con->domain = strdup(domain);
     con->max_queue = 1000; // TODO pull from config
+
+    return con;
 }
 
 void transport_con_msg_free(transport_con_msg* msg) {
@@ -19,7 +21,6 @@ void transport_con_msg_free(transport_con_msg* msg) {
 
    free(msg);
 }
-
 
 void transport_con_free(transport_con* con) {
     if (con == NULL) { return; }
@@ -60,6 +61,8 @@ void transport_con_set_address(transport_con* con, const char* service) {
     buffer_add_n(buf, md5, 8);
 
     con->address = buffer_release(buf);
+
+    osrfLogDebug(OSRF_LOG_MARK, "Connection set address to %s", con->address);
 }
 
 int transport_con_connect(
@@ -109,6 +112,8 @@ int transport_con_connect(
     )) { return -1; }
 
     freeReplyObject(reply);
+
+    return 0;
 }
 
 int transport_con_disconnect(transport_con* con) {
@@ -155,7 +160,7 @@ transport_con_msg* transport_con_recv_once(transport_con* con, int timeout, cons
     if (stream == NULL) { stream = con->address; }
 
     redisReply *reply, *tmp;
-    char *msg_id, *json;
+    char *msg_id = NULL, *json = NULL;
 
     if (timeout == 0) {
 
@@ -279,12 +284,13 @@ void transport_con_flush_socket(transport_con* con) {
 // Returns false/0 on success, true/1 on failure.
 // On error, the reply is freed.
 int handle_redis_error(redisReply *reply, const char* command, ...) {
+    VA_LIST_TO_STRING(command);
 
     if (reply != NULL && reply->type != REDIS_REPLY_ERROR) {
+        osrfLogInternal(OSRF_LOG_MARK, "Redis Command: %s", VA_BUF);
         return 0;
     }
 
-    VA_LIST_TO_STRING(command);
     char* err = reply == NULL ? "" : reply->str;
     osrfLogError(OSRF_LOG_MARK, "REDIS Error [%s] %s", err, VA_BUF);
     freeReplyObject(reply);
