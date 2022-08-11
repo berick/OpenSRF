@@ -55,6 +55,8 @@ void transport_con_flush_socket(transport_con* con);
 
 int handle_redis_error(redisReply *reply, const char* command, ...);
 
+int transport_con_make_stream(transport_con* con, const char* stream);
+
 
 #ifdef __cplusplus
 }
