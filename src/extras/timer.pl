@@ -14,7 +14,7 @@ use Time::HiRes qw/time/;
 #my $test_service = "opensrf.settings";
 my $test_service = "open-ils.cstore";
 
-my $iterations = 1; 
+my $iterations = 50; 
 my $parallel = 1;
 
 my $small_echo_data = <<TEXT;

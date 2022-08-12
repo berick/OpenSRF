@@ -1,35 +1,35 @@
 #include <opensrf/transport_connection.h>
 
 transport_con* transport_con_new(const char* domain) {
-    osrfLogInfo(OSRF_LOG_MARK, "HERE 1");
-    if (domain == NULL) { return NULL; }
+
+    osrfLogInternal(OSRF_LOG_MARK, "TCON transport_con_new() domain=%s", domain);
 
     transport_con* con = safe_malloc(sizeof(transport_con));
-    osrfLogInfo(OSRF_LOG_MARK, "HERE 2");
 
     con->bus = NULL;
     con->address = NULL;
     con->domain = strdup(domain);
-    osrfLogInfo(OSRF_LOG_MARK, "HERE 3");
     con->max_queue = 1000; // TODO pull from config
 
     osrfLogInternal(OSRF_LOG_MARK, 
-        "Created transport connection with domain: %s", con->domain);
+        "TCON created transport connection with domain: %s", con->domain);
 
     return con;
 }
 
 void transport_con_msg_free(transport_con_msg* msg) {
-   if (msg == NULL) { return; } 
+    osrfLogInternal(OSRF_LOG_MARK, "TCON transport_con_msg_free()");
+
+    if (msg == NULL) { return; } 
 
     if (msg->msg_id) { free(msg->msg_id); }
     if (msg->msg_json) { free(msg->msg_json); }
 
-   free(msg);
+    free(msg);
 }
 
 void transport_con_free(transport_con* con) {
-    if (con == NULL) { return; }
+    osrfLogInternal(OSRF_LOG_MARK, "TCON transport_con_free()");
 
     osrfLogInternal(
         OSRF_LOG_MARK, "Freeing transport connection for %s", con->domain);
@@ -42,10 +42,11 @@ void transport_con_free(transport_con* con) {
 }
 
 int transport_con_connected(transport_con* con) {
-    return con->bus != NULL; // TODO is there a redis check?
+    return con->bus != NULL;
 } 
 
 void transport_con_set_address(transport_con* con, const char* service) {
+    osrfLogInternal(OSRF_LOG_MARK, "TCON transport_con_set_address()");
 
     char hostname[1024];
     hostname[1023] = '\0';
@@ -76,6 +77,7 @@ void transport_con_set_address(transport_con* con, const char* service) {
 
 int transport_con_connect(
     transport_con* con, int port, const char* username, const char* password) {
+    osrfLogInternal(OSRF_LOG_MARK, "TCON transport_con_connect()");
 
     osrfLogDebug(OSRF_LOG_MARK, "Transport con connecting with bus "
         "domain=%s; address=%s; port=%d; username=%s", 
@@ -107,6 +109,7 @@ int transport_con_connect(
 }
 
 int transport_con_make_stream(transport_con* con, const char* stream) {
+    osrfLogInternal(OSRF_LOG_MARK, "TCON transport_con_make_stream() stream=%s", stream);
 
     redisReply *reply = redisCommand(
         con->bus, 
@@ -131,6 +134,8 @@ int transport_con_make_stream(transport_con* con, const char* stream) {
 }
 
 int transport_con_disconnect(transport_con* con) {
+    osrfLogInternal(OSRF_LOG_MARK, "TCON transport_con_disconnect()");
+
     if (con == NULL || con->bus == NULL) { return -1; }
 
     redisReply *reply = redisCommand(con->bus, "DEL %s", con->address);
@@ -143,7 +148,6 @@ int transport_con_disconnect(transport_con* con) {
     con->bus = NULL;
 
     return 0;
-
 }
 
 int transport_con_send(transport_con* con, const char* msg_json, const char* stream) {
@@ -170,6 +174,8 @@ int transport_con_send(transport_con* con, const char* msg_json, const char* str
 }
 
 transport_con_msg* transport_con_recv_once(transport_con* con, int timeout, const char* stream) {
+    osrfLogInternal(OSRF_LOG_MARK, 
+        "TCON transport_con_recv_once() timeout=%d stream=%s", timeout, stream);
 
     if (stream == NULL) { stream = con->address; }
 
@@ -259,6 +265,7 @@ transport_con_msg* transport_con_recv_once(transport_con* con, int timeout, cons
 
 
 transport_con_msg* transport_con_recv(transport_con* con, int timeout, const char* stream) {
+    osrfLogInternal(OSRF_LOG_MARK, "TCON transport_con_recv() stream=%s", stream);
 
     if (timeout == 0) {
         return transport_con_recv_once(con, 0, stream);

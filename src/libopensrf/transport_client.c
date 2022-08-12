@@ -4,7 +4,7 @@ transport_client* client_init(const char* domain,
     int port, const char* username, const char* password) {
 
     osrfLogInfo(OSRF_LOG_MARK, 
-        "client_init domain=%s port=%d username=%s", domain, port, username);
+        "TCLIENT client_init domain=%s port=%d username=%s", domain, port, username);
 
 	transport_client* client = safe_malloc(sizeof(transport_client));
     client->primary_domain = strdup(domain);
@@ -28,19 +28,18 @@ transport_client* client_init(const char* domain,
 static transport_con* client_connect_common(
     transport_client* client, const char* domain) {
 
-    osrfLogInfo(OSRF_LOG_MARK, "Connecting to domain: %s", domain);
+    osrfLogInfo(OSRF_LOG_MARK, "TCLIENT Connecting to domain: %s", domain);
 
     transport_con* con = transport_con_new(domain);
 
-    osrfLogInfo(OSRF_LOG_MARK, "Connecting to domain: %s PART 2", domain);
-
-    osrfHashSet(client->connections, (char*) domain, (void*) con);
+    osrfHashSet(client->connections, (void*) con, (char*) domain);
 
     return con;
 }
 
 
 static transport_con* get_transport_con(transport_client* client, const char* domain) {
+    osrfLogInternal(OSRF_LOG_MARK, "TCLIENT get_transport_con() domain=%s", domain);
 
     transport_con* con = (transport_con*) osrfHashGet(client->connections, (char*) domain);
 
@@ -61,6 +60,8 @@ static transport_con* get_transport_con(transport_client* client, const char* do
 }
 
 int client_connect_as_service(transport_client* client, const char* service) {
+    osrfLogInternal(OSRF_LOG_MARK, 
+        "TCLIENT client_connect_as_service() service=%s", service);
 
     growing_buffer* buf = buffer_init(32);
 
@@ -75,13 +76,15 @@ int client_connect_as_service(transport_client* client, const char* service) {
 
     client->primary_connection = con;
 
-    transport_con_make_stream(con, client->service_address);
-
-    return transport_con_connect(
+    transport_con_connect(
         con, client->port, client->username, client->password);
+
+    // Make a stream for the service address
+    return transport_con_make_stream(con, client->service_address);
 }
 
 int client_connect(transport_client* client) {
+    osrfLogInternal(OSRF_LOG_MARK, "TCLIENT client_connect()");
 
     transport_con* con = client_connect_common(client, client->primary_domain);
 
@@ -96,14 +99,14 @@ int client_connect(transport_client* client) {
 // Disconnect all connections and remove them from the connections hash.
 int client_disconnect(transport_client* client) {
 
-    osrfLogDebug(OSRF_LOG_MARK, "Disconnecting all transport connections");
+    osrfLogDebug(OSRF_LOG_MARK, "TCLIENT Disconnecting all transport connections");
 
     osrfHashIterator* iter = osrfNewHashIterator(client->connections);
 
     transport_con* con;
 
     while( (con = (transport_con*) osrfHashIteratorNext(iter)) ) {
-        osrfLogInfo(OSRF_LOG_MARK, "Disconnecting from domain: %s", con->domain);
+        osrfLogInternal(OSRF_LOG_MARK, "TCLIENT Disconnecting from domain: %s", con->domain);
         transport_con_disconnect(con);
         transport_con_free(con);
     }
@@ -121,6 +124,8 @@ int client_connected( const transport_client* client ) {
 }
 
 static char* get_domain_from_address(const char* address) {
+    osrfLogInternal(OSRF_LOG_MARK, 
+        "TCLIENT get_domain_from_address() address=%s", address);
 
     char* addr_copy = strdup(address);
     strtok(addr_copy, ":"); // "opensrf:"
@@ -140,6 +145,8 @@ static char* get_domain_from_address(const char* address) {
 }
 
 int client_send_message(transport_client* client, transport_message* msg) {
+    osrfLogInternal(OSRF_LOG_MARK, "TCLIENT client_send_message()");
+
 	if (client == NULL || client->error) { return -1; }
 
     transport_con* con;
@@ -183,7 +190,7 @@ int client_send_message(transport_client* client, transport_message* msg) {
 transport_message* client_recv_stream(transport_client* client, int timeout, const char* stream) {
 
     osrfLogInternal(OSRF_LOG_MARK, 
-        "client_recv_stream timeout=%d stream=%s", timeout, stream);
+        "TCLIENT client_recv_stream() timeout=%d stream=%s", timeout, stream);
 
     transport_con_msg* con_msg = 
         transport_con_recv(client->primary_connection, timeout, stream);
@@ -207,7 +214,7 @@ transport_message* client_recv(transport_client* client, int timeout) {
 
 transport_message* client_recv_for_service(transport_client* client, int timeout) {
 
-    osrfLogInternal(OSRF_LOG_MARK, "Receiving for service %s", client->service);
+    osrfLogInternal(OSRF_LOG_MARK, "TCLIENT Receiving for service %s", client->service);
 
     return client_recv_stream(client, timeout, client->service_address);
 }
@@ -218,6 +225,7 @@ transport_message* client_recv_for_service(transport_client* client, int timeout
 	@return 1 if successful, or 0 if not.  The only error condition is if @a client is NULL.
 */
 int client_free( transport_client* client ) {
+    osrfLogInternal(OSRF_LOG_MARK, "TCLIENT client_free()");
 	if (client == NULL) { return 0; }
 	return client_discard( client );
 }
@@ -232,6 +240,7 @@ int client_free( transport_client* client ) {
 	disconnect the parent as well.
  */
 int client_discard( transport_client* client ) {
+    osrfLogInternal(OSRF_LOG_MARK, "TCLIENT client_discard()");
 
 	if (client == NULL) { return 0; }
 
@@ -244,9 +253,22 @@ int client_discard( transport_client* client ) {
     if (client->username) { free(client->username); }
     if (client->password) { free(client->password); }
 
-    // Avoid freeing primary_connection since it's cleared when the
-    // connections hash is cleaned up in disconnect.
+    // Clean up our connections.
+    // We do not disconnect here since they caller may or may
+    // not want the socket closed.
+    // If disconnect() was just called, the connections hash
+    // will be empty.
+    osrfHashIterator* iter = osrfNewHashIterator(client->connections);
 
+    transport_con* con;
+
+    while( (con = (transport_con*) osrfHashIteratorNext(iter)) ) {
+        osrfLogInternal(OSRF_LOG_MARK, 
+            "client_discard() freeing connection for %s", con->domain);
+        transport_con_free(con);
+    }
+
+    osrfHashIteratorFree(iter);
     osrfHashFree(client->connections);
 
 	free(client);
