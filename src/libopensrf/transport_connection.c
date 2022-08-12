@@ -105,10 +105,10 @@ int transport_con_connect(
 
     freeReplyObject(reply);
 
-    return transport_con_make_stream(con, con->address);
+    return transport_con_make_stream(con, con->address, 0);
 }
 
-int transport_con_make_stream(transport_con* con, const char* stream) {
+int transport_con_make_stream(transport_con* con, const char* stream, int exists_ok) {
     osrfLogInternal(OSRF_LOG_MARK, "TCON transport_con_make_stream() stream=%s", stream);
 
     redisReply *reply = redisCommand(
@@ -120,13 +120,16 @@ int transport_con_make_stream(transport_con* con, const char* stream) {
         "mkstream"
     );
 
+    // Produces an error when a group/stream already exists, but that's
+    // acceptible when creating a group/stream for a stop-level service 
+    // address, since multiple Listeners are allowed.
     if (handle_redis_error(reply, 
         "XGROUP CREATE %s %s $ mkstream", 
         stream,
         stream,
         "$",
         "mkstream"
-    )) { return 0; }
+    )) { return exists_ok; }
 
     freeReplyObject(reply);
 
