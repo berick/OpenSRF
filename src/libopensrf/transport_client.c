@@ -80,7 +80,7 @@ int client_connect_as_service(transport_client* client, const char* service) {
         con, client->port, client->username, client->password);
 
     // Make a stream for the service address
-    return transport_con_make_stream(con, client->service_address);
+    return transport_con_make_stream(con, client->service_address, 1);
 }
 
 int client_connect(transport_client* client) {
