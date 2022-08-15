@@ -34,9 +34,8 @@ sub new {
     my $conf = $self->bus_config;
 
     # Create a connection for our primary domain.
-    # The domain is equivalent to the hostname of the redis instance.
-    $self->add_connection($conf->{host});
-    $self->{primary_domain} = $conf->{host};
+    $self->add_connection($conf->{domain});
+    $self->{primary_domain} = $conf->{domain};
 
     if ($service) {
         # If we're a service, this is where we listen for service-level requests.

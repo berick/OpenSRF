@@ -401,9 +401,8 @@ int osrf_system_bootstrap_common(const char* config_file,
 	char* log_level = osrfConfigGetValue(NULL, "/config/connections/%s/loglevel", connection_type);
 	char* username  = osrfConfigGetValue(NULL, "/config/connections/%s/message_bus/username", connection_type);
 	char* password  = osrfConfigGetValue(NULL, "/config/connections/%s/message_bus/password", connection_type);
-	char* host      = osrfConfigGetValue(NULL, "/config/connections/%s/message_bus/host", connection_type);
+	char* domain    = osrfConfigGetValue(NULL, "/config/connections/%s/message_bus/domain", connection_type);
 	char* port      = osrfConfigGetValue(NULL, "/config/connections/%s/message_bus/port", connection_type);
-	char* unixpath  = osrfConfigGetValue(NULL, "/config/connections/%s/message_bus/sock", connection_type);
 	char* facility  = osrfConfigGetValue(NULL, "/config/connections/%s/syslog", connection_type);
 	char* actlog    = osrfConfigGetValue(NULL, "/config/connections/%s/actlog", connection_type);
 	char* logtag    = osrfConfigGetValue(NULL, "/config/connections/%s/logtag", connection_type);
@@ -444,20 +443,13 @@ int osrf_system_bootstrap_common(const char* config_file,
 		failure = 1;
 	}
 
-	if((iport <= 0) && !unixpath) {
-		fprintf(stderr, "No unixpath or valid port in configuration file %s\n", config_file);
-		osrfLogError( OSRF_LOG_MARK, "No unixpath or valid port in configuration file %s\n",
-			config_file);
-		failure = 1;
-	}
-
 	if (failure) {
 		free(log_file);
 		free(log_level);
 		free(username);
 		free(password);
 		free(port);
-		free(unixpath);
+		free(domain);
 		free(facility);
 		free(actlog);
 		free(logtag);
@@ -465,9 +457,9 @@ int osrf_system_bootstrap_common(const char* config_file,
 	}
 
 	osrfLogInfo(OSRF_LOG_MARK, 
-        "Bootstrapping system with host %s, port %d", host, iport);
+        "Bootstrapping system with domain %s, port %d", domain, iport);
 
-	transport_client* client = client_init(host, iport, username, password);
+	transport_client* client = client_init(domain, iport, username, password);
 
     if (is_service) {
 	    if (client_connect_as_service(client, appname)) {
@@ -486,7 +478,7 @@ int osrf_system_bootstrap_common(const char* config_file,
 	free(username);
 	free(password);
 	free(port);
-	free(unixpath);
+	free(domain);
 
     // TODO
     osrfHashIterator* iter = osrfNewHashIterator(osrfGlobalTransportClient->connections);
