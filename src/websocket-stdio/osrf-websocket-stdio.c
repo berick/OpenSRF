@@ -442,8 +442,8 @@ static void relay_stdin_message(const char* msg_string) {
     if (!recipient) {
 
         if (service) {
-            size_t len = 9 + strlen(service); // service:$name
-            snprintf(recipient_buf, len, "service:%s", service);
+            size_t len = 9 + strlen(service); // opensrf:service:$name
+            snprintf(recipient_buf, len, "opensrf:service:%s", service);
             recipient = recipient_buf;
 
             if (!osrfStringArrayContains(public_services, service)) {
