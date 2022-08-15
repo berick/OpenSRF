@@ -100,6 +100,7 @@ opensrfinclude_HEADERS = $(OSRFINC)/log.h \
 	$(OSRFINC)/transport_client.h \
 	$(OSRFINC)/transport_message.h \
 	$(OSRFINC)/transport_session.h \
+	$(OSRFINC)/transport_connection.h \
 	$(OSRFINC)/utils.h \
 	$(OSRFINC)/xml_utils.h \
 	src/gateway/apachetools.h
