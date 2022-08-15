@@ -634,14 +634,13 @@ sub do_reset_message_bus {
             # Though connection details may vary by connection, we
             # assume all connections in a single bootstratp config
             # ultimately point to the same Redis instance.
-            my $host = $bus_conf->{host};
+            my $domain = $bus_conf->{domain};
             my $port = $bus_conf->{port};
-            my $sock = $bus_conf->{sock};
 
             # This redis connection uses the "default" account, which has
             # access to all actions and keys so it can manage access for
             # various opensrf account types.
-            my @connect_args = $sock ? (sock => $sock) : (server => "$host:$port");
+            my @connect_args = (server => "$domain:$port");
 
             $redis = Redis->new(@connect_args) or 
                 die "Cannot connect to Redis instance at @connect_args\n";
