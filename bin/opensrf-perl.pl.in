@@ -661,7 +661,9 @@ sub do_reset_message_bus {
         # Privileged clients can post message to all services and perform
         # delete operations to clear their own client: enpoints from 
         # (i.e. flush socket).
-        my $base_perms = '-@all +xgroup +xadd +xreadgroup +xack +xtrim +del';
+        my $base_perms = 
+            '-@all +xgroup +xadd +xreadgroup +xack +xtrim +del ~opensrf:router:*';
+
         my $permissions = "$base_perms ~opensrf:client:* ~opensrf:service:*";
         
         if (!$conf->{privileged}) {
