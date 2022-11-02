@@ -19,6 +19,9 @@ sub new {
         $self->{body} = $args{body} || '';
         $self->{osrf_xid} = $args{osrf_xid} || '';
         $self->{msg_id} = $args{msg_id} || '';
+        $self->{router_command} = $args{router_command} || '';
+        $self->{router_class} = $args{router_class} || '';
+        $self->{router_reply} = $args{router_reply} || '';
     }
 
     return $self;
@@ -71,18 +74,41 @@ sub msg_id {
     return $self->{msg_id};
 }
 
+sub router_command {
+    my($self, $router_command) = @_;
+    $self->{router_command} = $router_command if defined $router_command;
+    return $self->{router_command};
+}
+
+sub router_class {
+    my($self, $router_class) = @_;
+    $self->{router_class} = $router_class if defined $router_class;
+    return $self->{router_class};
+}
+
+sub router_reply {
+    my($self, $router_reply) = @_;
+    $self->{router_reply} = $router_reply if defined $router_reply;
+    return $self->{router_reply};
+}
+
 sub to_json {
     my $self = shift;
 
-    # No nead to encode the msg_id in outbound messages since the ID
-    # won't exist yet.
-    return OpenSRF::Utils::JSON->perl2JSON({
+    my $hash = {
         to => $self->{to},
         from => $self->{from},
-        osrf_xid => $self->{osrf_xid},
         thread => $self->{thread},
         body => $self->{body}
-    });
+    };
+
+    # Some values are optional.
+    # Avoid cluttering the JSON with undef values.
+    for my $key (qw/osrf_xid router_command router_class router_reply/) {
+        $hash->{$key} = $self->{$key} if defined $self->{$key};
+    }
+
+    return OpenSRF::Utils::JSON->perl2JSON($hash);
 }
 
 sub from_json {
