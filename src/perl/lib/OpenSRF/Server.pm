@@ -468,14 +468,11 @@ sub spawn_child {
 # Sends the register command to the configured routers
 # ----------------------------------------------------------------
 sub register_routers {
-    return; # TODO Redis
-
     my $self = shift;
 
     my $conf = OpenSRF::Utils::Config->current;
     my $routers = $conf->bootstrap->routers;
-    my $router_name = $conf->bootstrap->router_name;
-    my @targets;
+    my @domain;
 
     for my $router (@$routers) {
         if(ref $router) {
@@ -487,27 +484,25 @@ sub register_routers {
                     grep { $_ eq $self->{service} } @{$router->{services}->{service}}
                 )  || $router->{services}->{service} eq $self->{service}) {
 
-                my $name = $router->{name};
-                my $domain = $router->{domain};
-                push(@targets, "$name\@$domain/router");
+                push(@domain, $router->{domain});
             }
 
         } else {
-            push(@targets, "$router_name\@$router/router");
+            push(@domain, $router);
         }
     }
 
-    foreach (@targets) {
+    foreach (@domain) {
         $logger->info("server: registering with router $_");
         $self->{osrf_handle}->send(
-            to => $_,
+            to => "opensrf:router:$domain",
             body => 'registering',
             router_command => 'register',
             router_class => $self->{service}
         );
     }
 
-    $self->{routers} = \@targets;
+    $self->{routers} = \@domains;
 }
 
 # ----------------------------------------------------------------
@@ -515,15 +510,13 @@ sub register_routers {
 # with.
 # ----------------------------------------------------------------
 sub unregister_routers {
-    return; # TODO Redis
-
     my $self = shift;
     return unless $self->{osrf_handle}->tcp_connected;
 
-    for my $router (@{$self->{routers}}) {
-        $logger->info("server: disconnecting from router $router");
+    for my $domain (@{$self->{routers}}) {
+        $logger->info("server: disconnecting from router $domain");
         $self->{osrf_handle}->send(
-            to => $router,
+            to => "opensrf:router:$domain",
             body => "unregistering",
             router_command => "unregister",
             router_class => $self->{service}
