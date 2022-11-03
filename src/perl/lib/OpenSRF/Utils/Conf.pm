@@ -1,35 +1,52 @@
 package OpenSRF::Utils::Conf;
-use Net::Domain qw/hostfqdn/;                                                  
+use Net::Domain qw/hostfqdn/;
 use YAML; # sudo apt install libyaml-perl
 
 sub new {
-    my ($class, $filename) = @_;
-    my $yaml = YAML::LoadFile($filename) || die "Cannot load config: $!\n";
-
-    my $self = bless({
-        yaml => $yaml,
-        connections => {},          # : HashMap<String, BusConnectionType>,                           
-        credentials => {},          # : HashMap<String, BusCredentials>,                              
-        domains => [],              # : Vec<BusDomain>,                                                   
-        service_groups => {},       # : HashMap<String, Vec<String>>,                              
-        log_protect => [],          # : Vec<String>,                                                  
-        services => [],             # : Vec<Service>,                                                    
-        primary_connection => undef # : Option<BusConnection>,                                 
-    }, $class);
-
-    $self->load();
-
+    my $class = shift;
+    my $self = bless({});
+    $self->reset;
     return $self;
+}
+
+# Does not reset our primary_connection
+sub reset {
+    my $self = shift;
+    $self->{source} = undef;
+    $self->{connections} = {};
+    $self->{credentials} = {};
+    $self->{domains} = [];
+    $self->{service_groups} = {};
+    $self->{log_protect} = [];
+    $self->{services} = [];
+}
+
+sub load_file {
+    my ($self, $filename) = @_;
+    $self->reset;
+    $self->{source_filename} = $filename;
+    $self->{source} = YAML::LoadFile($filename) || die "Cannot load config: $!\n";
+    $self->load;
+}
+
+# Re-read the configuration
+sub reload {
+    my $self = shift;
+    return $self->load_file($self->{source_filename});
+}
+
+sub from_legacy {
+    # TODO pull configs OpenSRF::Utils::Config
 }
 
 # Pull the known config values from the YAML.
 # Only settings that control bus connectivity are required.
 sub load {
     my $self = shift;
-    my $y = $self->yaml;
+    my $y = $self->source;
 
     if ($y->{'log-protect'}) {
-        $self->{log_protect} = $self->yaml->{'log-protect'};
+        $self->{log_protect} = $y->{'log-protect'};
     }
 
     if ($y->{'service-groups'}) {
@@ -40,7 +57,7 @@ sub load {
 
     my $creds = $bus->{'credentials'};
     while (($key, $value) = each(%$creds)) {
-        $self->{credentials}->{$key} = 
+        $self->{credentials}->{$key} =
             OpenSRF::Utils::Conf::BusCredentials->new(
                 $value->{username}, $value->{password});
     }
@@ -54,7 +71,7 @@ sub load {
             die "No such service group: $name\n" unless $services;
         }
 
-        push(@{$self->{domains}}, 
+        push(@{$self->{domains}},
             OpenSRF::Utils::Conf::BusDomain->new(
                 $domain->{name},
                 $domain->{port} || 6379,
@@ -69,9 +86,9 @@ sub load {
         my $creds = $self->credentials->{$cname};
         die "No such credentials: $cname\n" unless $creds;
 
-        $self->{connections}->{$name} = 
+        $self->{connections}->{$name} =
             OpenSRF::Utils::Conf::BusConnectionType->new(
-                $creds, 
+                $creds,
                 $connection->{loglevel},
                 $connection->{'syslog-facility'},
                 $connection->{'actlog-facility'},
@@ -81,15 +98,18 @@ sub load {
     if ($y->{services}) {
         while (($name, $conf) = each(%{$y->{services}})) {
             my $service = OpenSRF::Utils::Conf::Service->new(
-                $name, 
-                $conf->{lang}, 
-                $conf->{keepalive}, 
+                $name,
+                $conf->{lang},
+                $conf->{keepalive},
                 $conf->{workers}->{'min'},
                 $conf->{workers}->{'max'},
                 $conf->{workers}->{'min-idle'},
                 $conf->{workers}->{'max-idle'},
-                $conf->{workers}->{'max_requests'},
+                $conf->{workers}->{'max-requests'},
+                $conf->{'app-settings'}
             );
+
+            $service->{source} = $conf;
 
             push(@{$self->{services}}, $service);
         }
@@ -99,9 +119,9 @@ sub load {
 # Link to the source config file.
 # In here you can find anything that's not explicitly unpacked
 # by this module.
-sub yaml {
+sub source {
     my $self = shift;
-    return $self->{yaml};
+    return $self->{source};
 }
 sub connections {
     my $self = shift;
@@ -115,6 +135,7 @@ sub domains {
     my $self = shift;
     return $self->{domains};
 }
+# Named lists of service names
 sub service_groups {
     my $self = shift;
     return $self->{service_groups};
@@ -130,6 +151,18 @@ sub services {
 sub primary_connection {
     my $self = shift;
     return $self->{primary_connection};
+}
+
+sub set_primary_connection {
+    my ($self, $domain, $ctype) = @_;
+    my $ct = $self->connections->{$ctype};
+    my ($dm) = grep {$_->name eq $domain} @{$self->domains};
+
+    die "No such connection type: $ctyp\n" unless $ct;
+    die "No such domain: $domain\n" unless $dm;
+
+    $self->{primary_connection} =
+        OpenSRF::Utils::Conf::BusConnection->new($dm, $ct);
 }
 
 
@@ -172,9 +205,9 @@ sub name {
 sub port {
     my $self = shift;
     return $self->{port};
-}       
+}
 
-# Returns an array ref if this domain hosts a specific 
+# Returns an array ref if this domain hosts a specific
 # set of services.  Returns undef otherwise.
 sub services {
     my $self = shift;
@@ -187,11 +220,13 @@ package OpenSRF::Utils::Conf::BusConnectionType;
 
 sub new {
     my ($class, $credentials, $log_level, $log_facility, $act_facility) = @_;
+    die "BusConnectionType requires credentials\n" unless $credentials;
+
     return bless({
         credentials => $credentials,
-        log_level => $log_level,
-        log_facility => $log_facility,
-        act_facility => $act_facility,
+        log_level => $log_level         || 'info',
+        log_facility => $log_facility   || 'local0',
+        act_facility => $act_facility,  # OK if undef
     }, $class);
 }
 
@@ -237,21 +272,34 @@ sub connection_type {
 package OpenSRF::Utils::Conf::Service;
 
 sub new {
-    my ($class, $name, $lang, $keepalive, $min_workers, 
-        $max_workers, $min_idle_workers, $max_idle_workers, $max_requests) = @_;
+    my ($class, $name, $lang, $keepalive, $min_workers, $max_workers,
+        $min_idle_workers, $max_idle_workers, $max_requests, $app_settings) = @_;
+
+    die "Service name and lang required.\n" unless $name && $lang;
 
     return bless({
         name => $name,
         lang => $lang,
-        keepalive => $keepalive,
-        min_workers => $min_workers,
-        max_workers => $max_workers,
-        min_idle_workers => $min_idle_workers,
-        max_idle_workers => $max_idle_workers,
-        max_requests => $max_requests,
+        keepalive => $keepalive                 || 6,
+        min_workers => $min_workers             || 1,
+        max_workers => $max_workers             || 30,
+        min_idle_workers => $min_idle_workers   || 1,
+        max_idle_workers => $max_idle_workers   || 5,
+        max_requests => $max_requests           || 100,
+        app_settings => $app_settings           || {},
     }, $class);
 }
 
+# Opaque collection of extended app-specific settings.
+sub app_settings {
+    my $self = shift;
+    return $self->{app_settings};
+}
+# Source config hash.
+sub source {
+    my $self = shift;
+    return $self->{source};
+}
 sub name {
     my $self = shift;
     return $self->{name};
