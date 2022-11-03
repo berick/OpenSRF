@@ -1,0 +1,197 @@
+# vim:et:ts=2:sw=2:ft=yaml
+
+message-bus:
+  # Connecting to OpenSRF.
+  # Standalone OpenSRF clients will only require message-bus: config.
+
+  # List all routable domains in our cluster.
+  #
+  # If a Domain has a "hosted-services" entry, those are the only services
+  # that will launch themselves on the domain AND the only services which
+  # are permitted to register with the router running on the domain.  
+  # If no hosted-services entry exists, all services are permitted to run
+  # on the domain / register with the domain's router.
+  domains:
+    - name: private.localhost
+      port: 5222
+    - name: public.localhost
+      port: 5222
+      hosted-services: public-services
+
+  # Credentials used for logging in to the message bus.
+  #
+  # Names are free-form and have no meaning outside of their use in
+  # this file.
+  credentials:
+    opensrf:
+      username: opensrf
+      password: password
+    router:
+      username: router
+      password: password
+
+  # Well-known connection types, with option to define custom types
+  # for use with local scripts, etc.
+  #
+  # These link connection types to their bus credentials and define
+  # their logging configs.
+  connections:
+    service:
+      credentials: opensrf
+      logfile: syslog
+      loglevel: debug
+      syslog-facility: local0
+      actlog-facility: local1
+    gateway:
+      credentials: opensrf
+      logfile: syslog
+      loglevel: info
+      syslog-facility: local6
+      actlog-facility: local1
+    srfsh:
+      credentials: opensrf
+      logfile: syslog
+      loglevel: debug
+      syslog-facility: local0
+    router:
+      credentials: router
+      logfile: syslog
+      loglevel: trace
+      syslog-facility: local2
+
+# Named groups of services.
+# Names are free-form and have no meaning outside of this configuration file.
+service-groups:
+  public-services:
+    - opensrf.math
+    - open-ils.actor
+    - open-ils.acq
+    - open-ils.auth
+    - open-ils.auth_proxy
+    - open-ils.booking
+    - open-ils.cat
+    - open-ils.circ
+    - open-ils.collections
+    - open-ils.courses
+    - open-ils.curbside
+    - open-ils.ebook_api
+    - open-ils.fielder
+    - open-ils.pcrud
+    - open-ils.permacrud
+    - open-ils.reporter
+    - open-ils.resolver
+    - open-ils.search
+    - open-ils.serial
+    - open-ils.supercat
+    - open-ils.url_verify
+    - open-ils.vandelay
+    - opensrf.rs-public
+
+# Avoid logging parameters for API calls (at or below INFO level) whose
+# API name is a left-anchored match to any of the following method names.
+log-protect:
+  - open-ils.auth.authenticate.verify
+  - open-ils.auth.authenticate.complete
+  - open-ils.auth.login
+  - open-ils.auth_proxy.login
+  - open-ils.actor.patron.password_reset.commit
+  - open-ils.actor.user.password
+  - open-ils.actor.user.username
+  - open-ils.actor.user.email
+  - open-ils.actor.patron.update
+  - open-ils.cstore.direct.actor.user.create
+  - open-ils.cstore.direct.actor.user.update
+  - open-ils.cstore.direct.actor.user.delete
+  - open-ils.search.z3950.apply_credentials
+  - open-ils.geo
+  - open-ils.actor.geo
+
+default-locale: en-US
+
+dirs:
+    log: /openils/var/log
+    sock: /openils/var/lock
+    pid: /openils/var/run
+    xsl: /openils/var/xsl
+
+share:
+    user: 
+        # Set to true to require patron opt-in for non-home transactions
+        opt-in: false
+        
+IDL: /openils/conf/fm_IDL.xml
+IDL2js: fm_IDL2js.xsl
+
+# TODO: pull a bunch of other stuff out of opensrf.xml
+
+# Named database configurations.
+# Names are free-form and have no meaning outside of this configuration file.
+# Refer to these by name in the services: config below.
+databases:
+  primary:
+    driver: pgsql
+    user: evergreen
+    host: 127.0.0.1
+    port: 5432
+    pw: evergreen
+    db: evergreen
+    client-encoding: UTF-8
+  replica-01:
+    driver: pgsql
+    user: evergreen-readonly
+    host: 127.0.0.1
+    port: 5432
+    pw: evergreen
+    db: evergreen
+    client-encoding: UTF-8
+
+# Use these values to fill in any gaps in the configs below.
+service-defaults:
+  keepalive: 5
+  workers:
+    min: 1
+    max: 15
+    min-idle: 1
+    max-idle: 5
+    max-requests: 1000
+
+# Hosted services
+services:
+  opensrf.settings:
+    lang: perl
+    implementation: OpenSRF::Application::Settings
+    workers:
+      unix-sock: opensrf.settings_unix.sock
+      unix-pid: opensrf.settings_unix.pid
+      unix-log: opensrf.settings_unix.log
+      min: 5
+      max: 15
+      min-idle: 3
+      max-idle: 5
+      max-request: 500
+  open-ils.cstore:
+    lang: c
+    keepalive: 6
+    implementation: liboils_cstore.so
+    workers:
+      min: 5
+      max: 30
+      min-idle: 1
+      max-idle: 10
+      max-requests: 1000
+    app-settings:
+      database: primary # see named databases above
+      database-application: open-ils.cstore
+      max-query-recursion: 100
+  open-ils.auth:
+    lang: c
+    keepalive: 5
+    implementation: liboils_auth.so
+    # see service-defaults for worker configs
+    app-settings:
+      auth-limits:
+        seed: 30
+        block-time: 90
+        block-count: 10
+
+  # TODO more...

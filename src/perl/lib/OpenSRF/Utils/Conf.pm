@@ -1,4 +1,5 @@
 package OpenSRF::Utils::Conf;
+use OpenSRF::Utils::Config;
 use Net::Domain qw/hostfqdn/;
 use YAML; # sudo apt install libyaml-perl
 
@@ -36,7 +37,8 @@ sub reload {
 }
 
 sub from_legacy {
-    # TODO pull configs OpenSRF::Utils::Config
+    my $self = OpenSRF::Utils::Conf->new;
+    my $legacy = OpenSRF::Utils::Config->current;
 }
 
 # Pull the known config values from the YAML.
