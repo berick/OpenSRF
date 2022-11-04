@@ -2,9 +2,11 @@
 
 message-bus:
   # Connecting to OpenSRF.
-  # Standalone OpenSRF clients will only require message-bus: config.
+  #
+  # Standalone OpenSRF clients only require a subset of the message-bus: 
+  # config.
 
-  # List all routable domains in our cluster.
+  # List of all routable domains in our cluster.
   #
   # If a Domain has a "hosted-services" entry, those are the only services
   # that will launch themselves on the domain AND the only services which
@@ -20,8 +22,8 @@ message-bus:
 
   # Credentials used for logging in to the message bus.
   #
-  # Names are free-form and have no meaning outside of their use in
-  # this file.
+  # Credential names (e.g. "opensrf") are free-form and have no meaning
+  # outside of their use in this file.
   credentials:
     opensrf:
       username: opensrf
@@ -50,9 +52,8 @@ message-bus:
       actlog-facility: local1
     srfsh:
       credentials: opensrf
-      logfile: syslog
+      logfile: /openils/var/log/srfsh.log
       loglevel: debug
-      syslog-facility: local0
     router:
       credentials: router
       logfile: syslog
@@ -87,8 +88,9 @@ service-groups:
     - open-ils.vandelay
     - opensrf.rs-public
 
-# Avoid logging parameters for API calls (at or below INFO level) whose
-# API name is a left-anchored match to any of the following method names.
+# Avoid logging parameters for API calls -- at or above INFO level --
+# whose API name is a left-anchored match to any of the following method
+# names.
 log-protect:
   - open-ils.auth.authenticate.verify
   - open-ils.auth.authenticate.complete
@@ -105,6 +107,9 @@ log-protect:
   - open-ils.search.z3950.apply_credentials
   - open-ils.geo
   - open-ils.actor.geo
+
+# Settings for Running Services -------------------------------------------
+# -------------------------------------------------------------------------
 
 default-locale: en-US
 
@@ -136,9 +141,9 @@ databases:
     pw: evergreen
     db: evergreen
     client-encoding: UTF-8
-  replica-01:
+  reporter:
     driver: pgsql
-    user: evergreen-readonly
+    user: evergreen
     host: 127.0.0.1
     port: 5432
     pw: evergreen
@@ -153,7 +158,7 @@ service-defaults:
     max: 15
     min-idle: 1
     max-idle: 5
-    max-requests: 1000
+    max-requests: 5000
 
 # Hosted services
 services:
@@ -164,11 +169,10 @@ services:
       unix-sock: opensrf.settings_unix.sock
       unix-pid: opensrf.settings_unix.pid
       unix-log: opensrf.settings_unix.log
+      # override some worker defaults
       min: 5
       max: 15
       min-idle: 3
-      max-idle: 5
-      max-request: 500
   open-ils.cstore:
     lang: c
     keepalive: 6
@@ -176,9 +180,7 @@ services:
     workers:
       min: 5
       max: 30
-      min-idle: 1
       max-idle: 10
-      max-requests: 1000
     app-settings:
       database: primary # see named databases above
       database-application: open-ils.cstore
@@ -187,7 +189,6 @@ services:
     lang: c
     keepalive: 5
     implementation: liboils_auth.so
-    # see service-defaults for worker configs
     app-settings:
       auth-limits:
         seed: 30
