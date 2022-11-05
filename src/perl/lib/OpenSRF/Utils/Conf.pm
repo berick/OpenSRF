@@ -3,11 +3,17 @@ use OpenSRF::Utils::Config;
 use Net::Domain qw/hostfqdn/;
 use YAML; # sudo apt install libyaml-perl
 
+my $singleton;
+
 sub new {
     my $class = shift;
-    my $self = bless({});
+    my $self = $singleton = bless({});
     $self->reset;
     return $self;
+}
+
+sub current {
+    $singleton
 }
 
 # Does not reset our primary_connection
@@ -19,7 +25,6 @@ sub reset {
     $self->{domains} = [];
     $self->{service_groups} = {};
     $self->{log_protect} = [];
-    $self->{services} = [];
 }
 
 sub load_file {
@@ -28,6 +33,11 @@ sub load_file {
     $self->{source_filename} = $filename;
     $self->{source} = YAML::LoadFile($filename) || die "Cannot load config: $!\n";
     $self->load;
+}
+
+# This is handy
+sub hostname {
+    hostfqdn();
 }
 
 # Re-read the configuration
@@ -91,31 +101,18 @@ sub load {
         $self->{connections}->{$name} =
             OpenSRF::Utils::Conf::BusConnectionType->new(
                 $creds,
-                $connection->{loglevel},
+                $connection->{'log-level'},
+                $connection->{'log-file'},
                 $connection->{'syslog-facility'},
+                $connection->{'actlog-file'},
                 $connection->{'actlog-facility'},
             );
+
+        $self->{connections}->{$name}->{generate_xid} = $connection->{'generate-xid'};
+        $self->{connections}->{$name}->{log_length} = $connection->{'log-length'};
+        $self->{connections}->{$name}->{log_tag} = $connection->{'log-tag'};
     }
 
-    if ($y->{services}) {
-        while (($name, $conf) = each(%{$y->{services}})) {
-            my $service = OpenSRF::Utils::Conf::Service->new(
-                $name,
-                $conf->{lang},
-                $conf->{keepalive},
-                $conf->{workers}->{'min'},
-                $conf->{workers}->{'max'},
-                $conf->{workers}->{'min-idle'},
-                $conf->{workers}->{'max-idle'},
-                $conf->{workers}->{'max-requests'},
-                $conf->{'app-settings'}
-            );
-
-            $service->{source} = $conf;
-
-            push(@{$self->{services}}, $service);
-        }
-    }
 }
 
 # Link to the source config file.
@@ -221,7 +218,9 @@ sub services {
 package OpenSRF::Utils::Conf::BusConnectionType;
 
 sub new {
-    my ($class, $credentials, $log_level, $log_facility, $act_facility) = @_;
+    my ($class, $credentials, $log_level, $log_file, 
+        $log_facility, $actlog_file, $actlog_facility) = @_;
+
     die "BusConnectionType requires credentials\n" unless $credentials;
 
     return bless({
@@ -232,6 +231,15 @@ sub new {
     }, $class);
 }
 
+sub max_queue_length {
+    my $self = shift;
+    return ($self->{max_queue_length} || 0) || 1000;
+}
+
+sub generate_xid {
+    my $self = shift;
+    return $self->{generate_xid} || 0;
+}
 sub credentials {
     my $self = shift;
     return $self->{credentials};
@@ -240,13 +248,29 @@ sub log_level {
     my $self = shift;
     return $self->{log_level};
 }
+sub log_file {
+    my $self = shift;
+    return $self->{log_file};
+}
 sub log_facility {
     my $self = shift;
-    return $self->{log_facility};
+    return $self->{syslog_facility};
 }
-sub act_facility {
+sub actlog_file {
     my $self = shift;
-    return $self->{act_facility};
+    return $self->{actlog_file};
+}
+sub actlog_facility {
+    my $self = shift;
+    return $self->{actlog_facility};
+}
+sub log_length {
+    my $self = shift;
+    return $self->{log_length};
+}
+sub log_tag {
+    my $self = shift;
+    return $self->{log_tag};
 }
 
 package OpenSRF::Utils::Conf::BusConnection;

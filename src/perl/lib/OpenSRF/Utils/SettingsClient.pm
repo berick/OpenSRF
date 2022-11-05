@@ -3,7 +3,7 @@ package OpenSRF::Utils::SettingsClient;
 use OpenSRF::Utils::SettingsParser;
 use OpenSRF::System;
 use OpenSRF::AppSession;
-use OpenSRF::Utils::Config;
+use OpenSRF::Utils::Conf;
 use OpenSRF::EX qw(:try);
 
 use vars qw/$host_config/;
@@ -53,9 +53,9 @@ sub grab_host_config {
 	my $self = shift;
 	my $reload = shift;
 
-	my $bsconfig = OpenSRF::Utils::Config->current;
+	my $bsconfig = OpenSRF::Utils::Conf->current;
 	die "No bootstrap config exists.  Have you bootstrapped?\n" unless $bsconfig;
-	my $host = $bsconfig->env->hostname;
+	my $host = $bsconfig->hostname;
 
 	$session = OpenSRF::AppSession->create( "opensrf.settings" ) unless $session;
 

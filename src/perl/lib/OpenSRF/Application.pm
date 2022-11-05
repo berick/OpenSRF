@@ -12,7 +12,7 @@ use Time::HiRes qw/time/;
 use OpenSRF::EX qw/:try/;
 use Carp;
 use OpenSRF::Utils::JSON;
-use OpenSRF::Utils::Config;
+use OpenSRF::Utils::Conf;
 
 sub DESTROY{};
 
@@ -143,8 +143,8 @@ sub handler {
 		my $redact_params = 0;
 		if (@p) {
 
-			my $conf = OpenSRF::Utils::Config->current->as_hash;
-			my $protect = $conf->{shared}->{log_protect};
+			my $conf = OpenSRF::Utils::Conf->current;
+			my $protect = $conf->log_protect;
 
 			if (ref($protect) eq 'ARRAY') {
 				foreach my $match_string (@$protect) {

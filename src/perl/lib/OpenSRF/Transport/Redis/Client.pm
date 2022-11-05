@@ -31,11 +31,14 @@ sub new {
 
     bless($self, $class);
 
-    my $conf = $self->bus_config;
+    my $pc = OpenSRF::Utils::Conf->current->primary_connection
+        || die "Primary connection required\n";
+
+    my $domain = $pc->domain->name;
 
     # Create a connection for our primary domain.
-    $self->add_connection($conf->{domain});
-    $self->{primary_domain} = $conf->{domain};
+    $self->add_connection($domain);
+    $self->{primary_domain} = $domain;
 
     if ($service) {
         # If we're a service, this is where we listen for service-level requests.
@@ -54,25 +57,6 @@ sub reset {
     $_singleton = undef;
 } 
 
-sub bus_config {
-    my $self = shift;
-
-    my $conf = OpenSRF::Utils::Config->current->as_hash;
-
-    $conf = $conf->{connections} or
-        die "No 'connections' block in core configuration\n";
-
-    my $con_type = $self->connection_type;
-
-    $conf = $conf->{$con_type} or
-        die "No '$con_type' connection in core configuration\n";
-    
-    $conf = $conf->{message_bus} or die 
-        "No message_bus config for connection type " . $self->connection_type . "\n";
-
-    return $conf;
-}
-
 sub connection_type {
     my $self = shift;
     return $self->{connection_type};
@@ -81,16 +65,17 @@ sub connection_type {
 sub add_connection {
     my ($self, $domain) = @_;
 
-    my $conf = $self->bus_config;
+    my $pc = OpenSRF::Utils::Conf->current->primary_connection;
+    my $ctype = $pc->connection_type;
 
     # Assumes other connection parameters are the same across
     # Redis instances, apart from the hostname.
     my $connection = OpenSRF::Transport::Redis::BusConnection->new(
         $domain, 
-        $conf->{port}, 
-        $conf->{username}, 
-        $conf->{password},
-        $conf->{max_queue_size} || 1000
+        $ctype->port, 
+        $ctype->username, 
+        $ctype->password,
+        $ctype->max_queue_length
     );
 
     $connection->set_address($self->service);

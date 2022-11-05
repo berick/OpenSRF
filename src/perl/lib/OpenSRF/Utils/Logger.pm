@@ -6,7 +6,7 @@ use Unix::Syslog qw(:macros :subs);
 use base qw/OpenSRF Exporter/;
 use FileHandle;
 use Time::HiRes qw(gettimeofday);
-use OpenSRF::Utils::Config;
+use OpenSRF::Utils::Conf;
 use Fcntl;
 
 =head1
@@ -67,30 +67,28 @@ sub set_config {
 
     die "Logger connection type needed\n" unless $connection_type;
 
-    $config = OpenSRF::Utils::Config->current;
+    $config = OpenSRF::Utils::Conf->current;
     if( !defined($config) ) {
         $loglevel = INFO();
         warn "*** Logger found no config.  Using STDERR ***\n";
         return;
     }
 
-    $config = $config->as_hash->{connections}->{$connection_type};
+    $config = $config->connections->{$connection_type};
 
-    $loglevel =  $config->{loglevel};
+    $loglevel =  $config->loglevel;
 
-    if ($config->{loglength}) {
+    if ($config->log_length) {
         $max_log_msg_len = $config->bootstrap->loglength;
     }
 
-    $service_tag = $config->{logtag};
+    $service_tag = $config->log_tag;
 
-    $logfile = $config->{logfile};
+    $logfile = $config->log_file;
     if($logfile =~ /^syslog/) {
         $syslog_enabled = 1;
         $logfile_enabled = 0;
-        $logfile = $config->{syslog};
-        $facility = $logfile;
-        $logfile = undef;
+        $facility = $config->log_facility;
         $facility = _fac_to_const($facility);
         # OSRF_ADOPT_SYSLOG means we assume syslog is already
         # opened w/ the correct values.  Don't clobber it.
@@ -107,7 +105,7 @@ sub set_config {
         # --------------------------------------------------------------
         $act_syslog_enabled = 1;
         $act_logfile_enabled = 0;
-        $actfac = $config->{actlog} || $config->{syslog};
+        $actfac = $config->act_facility || $config->log_facility;
         $actfac = _fac_to_const($actfac);
         $actfile = undef;
     } else {
@@ -117,10 +115,10 @@ sub set_config {
         # --------------------------------------------------------------
         $act_syslog_enabled = 0;
         $act_logfile_enabled = 1;
-        $actfile = $config->{actlog} || $config->{logfile};
+        $actfile = $config->actlog_file || $config->log_file;
     }
 
-    my $client = $config->{client} || '';
+    my $client = $config->generate_xid || '';
 
     if ($ENV{OSRF_LOG_CLIENT} or $ENV{MOD_PERL}) {
         $isclient = 1;
