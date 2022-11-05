@@ -472,7 +472,7 @@ sub register_routers {
     my @domains;
 
     for my $domain (@{$conf->domains}) {
-        if (my $list = $domain->services) {
+        if (my $list = $domain->allowed_services) {
             if (!(grep {$_ eq $self->service} @$list)) {
                 $logger->debug(sprintf(
                     "Service %s is not configured to run on domain %s",

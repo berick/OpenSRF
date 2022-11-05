@@ -24,7 +24,7 @@ use OpenSRF::Transport::PeerHandle;
 use OpenSRF::Utils::SettingsClient;
 use OpenSRF::Transport::Listener;
 use OpenSRF::Utils;
-use OpenSRF::Utils::Config;
+use OpenSRF::Utils::Conf;
 use Redis;
 
 my $opt_service = undef;
@@ -602,8 +602,8 @@ sub do_daemon {
 
 # parses the local settings file
 sub load_settings {
-    my $conf = OpenSRF::Utils::Config->current;
-    my $cfile = $conf->as_hash->{settings_config};
+    my $conf = OpenSRF::Utils::Conf->current;
+    my $cfile = $conf->{'settings-config'};
     return unless $cfile;
     my $parser = OpenSRF::Utils::SettingsParser->new();
     $parser->initialize( $cfile );
@@ -617,25 +617,20 @@ sub load_settings {
 # since the system may not yet have access to connect to the bus.
 sub do_reset_message_bus {
 
-    my $base_conf = 
-        OpenSRF::Utils::Config->load(config_file => $opt_config, nocache => 1)->as_hash
-        or die "No suitable configuration found at $opt_config\n";
-
-    my $connections = $base_conf->{connections} or
-        die "No connection configuration found in $opt_config\n";
+    my $conf = OpenSRF::Utils::Conf->new->load_file($opt_config);
+    my $primary = $conf->primary_connection;
 
     my $redis;
 
-    for my $type (keys %$connections) {
+    for my $domain (keys $conf->domains) {
         my $conf = $connections->{$type};
-        my $bus_conf = $conf->{message_bus};
 
         if (!$redis) {
             # Though connection details may vary by connection, we
             # assume all connections in a single bootstratp config
             # ultimately point to the same Redis instance.
-            my $domain = $bus_conf->{domain};
-            my $port = $bus_conf->{port};
+            my $domain = $conf->{domain};
+            my $port = $conf->{port};
 
             # This redis connection uses the "default" account, which has
             # access to all actions and keys so it can manage access for

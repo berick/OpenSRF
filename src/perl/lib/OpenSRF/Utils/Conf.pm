@@ -1,5 +1,4 @@
 package OpenSRF::Utils::Conf;
-use OpenSRF::Utils::Config;
 use Net::Domain qw/hostfqdn/;
 use YAML; # sudo apt install libyaml-perl
 
@@ -46,11 +45,6 @@ sub reload {
     return $self->load_file($self->{source_filename});
 }
 
-sub from_legacy {
-    my $self = OpenSRF::Utils::Conf->new;
-    my $legacy = OpenSRF::Utils::Config->current;
-}
-
 # Pull the known config values from the YAML.
 # Only settings that control bus connectivity are required.
 sub load {
@@ -65,7 +59,9 @@ sub load {
         $self->{service_groups} = $y->{'service-groups'};
     }
 
-    my $bus = $y->{'message-bus'}; # This one is required.
+    my $bus = $y->{'message-bus'} || 
+        die "message-bus: configuration required\n";
+
 
     my $creds = $bus->{'credentials'};
     while (($key, $value) = each(%$creds)) {
@@ -78,7 +74,7 @@ sub load {
 
         # Name of service group if set.
         my $services;
-        if (my $name = $domain->{'hosted-services'}) {
+        if (my $name = $domain->{'allowed-services'}) {
             $services = $self->service_groups->{$name};
             die "No such service group: $name\n" unless $services;
         }
@@ -92,27 +88,30 @@ sub load {
         );
     }
 
+    my $log_defaults = $bus->{'log-defaults'} || {};
+
     while (($name, $connection) = each(%{$bus->{connections}})) {
 
         my $cname = $connection->{credentials};
         my $creds = $self->credentials->{$cname};
         die "No such credentials: $cname\n" unless $creds;
 
+        # pull the value from the connection or the default logging configs.
+        my $lv = sub { my $t = shift; $connection->{$t} || $log_defaults->{$t} };
+
         $self->{connections}->{$name} =
             OpenSRF::Utils::Conf::BusConnectionType->new(
                 $creds,
-                $connection->{'log-level'},
-                $connection->{'log-file'},
-                $connection->{'syslog-facility'},
-                $connection->{'actlog-file'},
-                $connection->{'actlog-facility'},
+                log_level             => $lv->('log-level'),
+                log_file              => $lv->('log-file'),
+                syslog_facility       => $lv->('syslog-facility'),
+                activity_log_file     => $lv->('activity-log-file'),
+                activity_log_facility => $lv->('activity-log-facility')
             );
 
-        $self->{connections}->{$name}->{generate_xid} = $connection->{'generate-xid'};
         $self->{connections}->{$name}->{log_length} = $connection->{'log-length'};
         $self->{connections}->{$name}->{log_tag} = $connection->{'log-tag'};
     }
-
 }
 
 # Link to the source config file.
@@ -142,10 +141,6 @@ sub service_groups {
 sub log_protect {
     my $self = shift;
     return $self->{log_protect};
-}
-sub services {
-    my $self = shift;
-    return $self->{services};
 }
 sub primary_connection {
     my $self = shift;
@@ -188,11 +183,11 @@ sub password {
 package OpenSRF::Utils::Conf::BusDomain;
 
 sub new {
-    my ($class, $name, $port, $services) = @_;
+    my ($class, $name, $port, $allowed_services) = @_;
     return bless({
         name => $name,
         port => $port,
-        services => $services
+        allowed_services => $allowed_services
     }, $class);
 }
 
@@ -208,9 +203,9 @@ sub port {
 
 # Returns an array ref if this domain hosts a specific
 # set of services.  Returns undef otherwise.
-sub services {
+sub allowed_services {
     my $self = shift;
-    my $s = $self->{services};
+    my $s = $self->{allowed_services};
     return $s if $s && ref $s eq 'ARRAY' && @$s > 0;
     return undef;
 }
@@ -218,27 +213,16 @@ sub services {
 package OpenSRF::Utils::Conf::BusConnectionType;
 
 sub new {
-    my ($class, $credentials, $log_level, $log_file, 
-        $log_facility, $actlog_file, $actlog_facility) = @_;
+    my ($class, $credentials, %args) = @_;
 
     die "BusConnectionType requires credentials\n" unless $credentials;
 
-    return bless({
-        credentials => $credentials,
-        log_level => $log_level         || 'info',
-        log_facility => $log_facility   || 'local0',
-        act_facility => $act_facility,  # OK if undef
-    }, $class);
+    return bless({credentials => $credentials, %args}, $class);
 }
 
 sub max_queue_length {
     my $self = shift;
     return ($self->{max_queue_length} || 0) || 1000;
-}
-
-sub generate_xid {
-    my $self = shift;
-    return $self->{generate_xid} || 0;
 }
 sub credentials {
     my $self = shift;
@@ -252,17 +236,17 @@ sub log_file {
     my $self = shift;
     return $self->{log_file};
 }
-sub log_facility {
+sub syslog_facility {
     my $self = shift;
     return $self->{syslog_facility};
 }
-sub actlog_file {
+sub activity_log_file {
     my $self = shift;
-    return $self->{actlog_file};
+    return $self->{activity_log_file};
 }
-sub actlog_facility {
+sub activity_log_facility {
     my $self = shift;
-    return $self->{actlog_facility};
+    return $self->{activity_log_facility};
 }
 sub log_length {
     my $self = shift;
@@ -293,70 +277,6 @@ sub domain {
 sub connection_type {
     my $self = shift;
     return $self->{connection_type};
-}
-
-package OpenSRF::Utils::Conf::Service;
-
-sub new {
-    my ($class, $name, $lang, $keepalive, $min_workers, $max_workers,
-        $min_idle_workers, $max_idle_workers, $max_requests, $app_settings) = @_;
-
-    die "Service name and lang required.\n" unless $name && $lang;
-
-    return bless({
-        name => $name,
-        lang => $lang,
-        keepalive => $keepalive                 || 6,
-        min_workers => $min_workers             || 1,
-        max_workers => $max_workers             || 30,
-        min_idle_workers => $min_idle_workers   || 1,
-        max_idle_workers => $max_idle_workers   || 5,
-        max_requests => $max_requests           || 100,
-        app_settings => $app_settings           || {},
-    }, $class);
-}
-
-# Opaque collection of extended app-specific settings.
-sub app_settings {
-    my $self = shift;
-    return $self->{app_settings};
-}
-# Source config hash.
-sub source {
-    my $self = shift;
-    return $self->{source};
-}
-sub name {
-    my $self = shift;
-    return $self->{name};
-}
-sub lang {
-    my $self = shift;
-    return $self->{lang};
-}
-sub keepalive {
-    my $self = shift;
-    return $self->{keepalive};
-}
-sub min_workers {
-    my $self = shift;
-    return $self->{min_workers};
-}
-sub max_workers {
-    my $self = shift;
-    return $self->{max_workers};
-}
-sub min_idle_workers {
-    my $self = shift;
-    return $self->{min_idle_workers};
-}
-sub max_idle_workers {
-    my $self = shift;
-    return $self->{max_idle_workers};
-}
-sub max_requests {
-    my $self = shift;
-    return $self->{max_requests};
 }
 
 1;
