@@ -8,7 +8,7 @@ use OpenSRF::Transport;
 use OpenSRF::Utils;
 use OpenSRF::EX qw/:try/;
 use POSIX qw/setsid :sys_wait_h/;
-use OpenSRF::Utils::Config; 
+use OpenSRF::Utils::Conf; 
 use OpenSRF::Utils::SettingsParser;
 use OpenSRF::Utils::SettingsClient;
 use OpenSRF::Application;
@@ -26,27 +26,16 @@ sub DESTROY {}
 
 sub load_bootstrap_config {
 
-    return if OpenSRF::Utils::Config->current;
+    return if OpenSRF::Utils::Conf->current;
 
     die "Please provide a bootstrap config file to OpenSRF::System\n"
         unless $bootstrap_config_file;
 
-    OpenSRF::Utils::Config->load(config_file => $bootstrap_config_file);
+    OpenSRF::Utils::Conf->new->load_file($bootstrap_config_file);
     OpenSRF::Utils::JSON->register_class_hint(
         name => 'OpenSRF::Application', hint => 'method', type => 'hash', strip => ['session']);
     OpenSRF::Transport::PeerHandle->set_peer_client('OpenSRF::Transport::Redis::PeerConnection');
     OpenSRF::Application->server_class('client');
-
-    return; # XXX
-
-    # Read in a shared portion of the config file
-    # for later use in log parameter redaction
-    $OpenSRF::Application::shared_conf = OpenSRF::Utils::Config->load(
-        'config_file' => OpenSRF::Utils::Config->current->FILE,
-        'nocache' => 1,
-        'force' => 1,
-        'base_path' => '/config/shared'
-    );
 }
 
 # ----------------------------------------------

@@ -17,7 +17,7 @@ use strict;
 use warnings;
 use OpenSRF::Transport;
 use OpenSRF::Application;
-use OpenSRF::Utils::Config;
+use OpenSRF::Utils::Conf;
 use OpenSRF::Transport::PeerHandle;
 use OpenSRF::Utils::SettingsClient;
 use OpenSRF::Utils::Logger qw($logger);
@@ -107,14 +107,7 @@ sub cleanup {
 sub handle_sighup {
     my $self = shift;
     $logger->info("server: caught SIGHUP; reloading children");
-
-    # reload the opensrf config
-    # note: calling ::Config->load() results in ever-growing
-    # package names, which eventually causes an exception
-    OpenSRF::Utils::Config->current->_load(
-        force => 1,
-        config_file => OpenSRF::Utils::Config->current->FILE
-    );
+    OpenSRF::Utils::Conf->current->reload;
 
     # force-reload the logger config
     OpenSRF::Utils::Logger::set_config(1);
@@ -464,41 +457,41 @@ sub spawn_child {
     }
 }
 
+sub service {
+    my $self = shift;
+    return $self->{service};
+}
+
 # ----------------------------------------------------------------
 # Sends the register command to the configured routers
 # ----------------------------------------------------------------
 sub register_routers {
     my $self = shift;
 
-    my $conf = OpenSRF::Utils::Config->current;
-    my $routers = $conf->bootstrap->routers;
-    my @domain;
+    my $conf = OpenSRF::Utils::Conf->current;
+    my @domains;
 
-    for my $router (@$routers) {
-        if(ref $router) {
-
-            if( !$router->{services} ||
-                !$router->{services}->{service} ||
-                (
-                    ref($router->{services}->{service}) eq 'ARRAY' and
-                    grep { $_ eq $self->{service} } @{$router->{services}->{service}}
-                )  || $router->{services}->{service} eq $self->{service}) {
-
-                push(@domain, $router->{domain});
+    for my $domain (@{$conf->domains}) {
+        if (my $list = $domain->services) {
+            if (!(grep {$_ eq $self->service} @$list)) {
+                $logger->debug(sprintf(
+                    "Service %s is not configured to run on domain %s",
+                    $self->service, $domain->name
+                ));
+                next;
             }
-
-        } else {
-            push(@domain, $router);
         }
+
+        push(@domains, $domain->name);
     }
 
-    foreach (@domain) {
-        $logger->info("server: registering with router $_");
+    for my $domain (@domains) {
+        $logger->info("server: registering with router $domain");
         $self->{osrf_handle}->send(
             to => "opensrf:router:$domain",
             body => 'registering',
             router_command => 'register',
-            router_class => $self->{service}
+            router_class => $self->service
         );
     }
 
