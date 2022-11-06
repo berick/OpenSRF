@@ -1,68 +1,98 @@
 # vim:et:ts=2:sw=2:sts=2:ft=yaml
-  
-message-bus:
-  # Connecting to OpenSRF.
-  #
-  # Standalone OpenSRF clients only require a subset of the message-bus: 
-  # config.
 
-  # List of all routable domains in our cluster.
-  #
-  # If a Domain has a "allowed-services" entry, those are the only services
-  # that will launch themselves on the domain AND the only services which
-  # are permitted to register with the router running on the domain.  
-  # If no allowed-services entry exists, all services are permitted to run
-  # on the domain / register with the domain's router.
-  domains:
-    - name: private.localhost
-      port: 5222
-    - name: public.localhost
-      port: 5222
-      allowed-services: public-services
+# Credentials used for logging in to the message bus.
+#
+# With security enforced by the router, there may be no need for 
+# multiple types of credentials, but they are supported.  We might
+# want them later.
+#
+# Credential names (e.g. "opensrf") are free-form and have no meaning
+# outside of their use in this file.
+credentials:
+  opensrf:
+    username: opensrf
+    password: password
 
-  # Credentials used for logging in to the message bus.
-  #
-  # Credential names (e.g. "opensrf") are free-form and have no meaning
-  # outside of their use in this file.
-  credentials:
-    opensrf:
-      username: opensrf
-      password: password
-    router:
-      username: router
-      password: password
+# Assumes this is the same for all domains / subdomains.
+# Do we need to support per-domain (or per-subdomain) ports?
+bus_port: 6379
 
-  # Default log config values.
-  # Values are optionally overridden in the connections: configs.
-  log-defaults:
-    logfile: syslog # "syslog" or log file path
-    loglevel: info
-    syslog-facility: local0
-    activity-log-facility: local1
+# List of routable domains in our cluster.
+#
+# If a Domain has an "allowed_services" entry, those are the only
+# services that may launch themselves on the domain AND the only
+# services which are permitted to register with the router running on
+# the domain.  If no allowed_services entry exists, all services are
+# permitted to run on the domain and register with the domain's router.
+domains:
+  - private: 
+      name: private.localhost
+    public: 
+      name: public.localhost
+      allowed_services: public_services
+    hosts:
+      - localhost
 
-  # Well-known connection types, with option to define custom types
-  # for use with local scripts, etc.
-  #
-  # These link connection types to their bus credentials and define
-  # their logging configs.
-  connections:
-    service:
-      credentials: opensrf
-    gateway:
-      credentials: opensrf
-      syslog-facility: local6
-    srfsh:
-      credentials: opensrf
-      logfile: /openils/var/log/srfsh.log
-      loglevel: debug
-    router:
-      credentials: router
-      syslog-facility: local2
+# Muli-server / multi-brick setup
+#
+#domains:
+#  brick01.eg.example.org:
+#    private: 
+#      name: private.brick01.eg.example.org 
+#    public: 
+#      name: public.brick01.eg.example.org 
+#      allowed_services: public_services
+#    hosts:
+#      - main.brick01.eg.example.org
+#      - worker-01.brick01.eg.example.org
+#      - worker-02.brick01.eg.example.org
+#  brick02.eg.example.org:
+#    private: 
+#      name: private.brick02.eg.example.org 
+#    public: 
+#      name: public.brick02.eg.example.org 
+#      allowed_services: public_services
+#    hosts:
+#      - main.brick02.eg.example.org
+#      - worker-01.brick02.eg.example.org
+#      - worker-02.brick02.eg.example.org
+
+
+# Default log config values.
+# Values are optionally overridden in the connections: configs.
+log_defaults:
+  log_file: syslog
+  log_level: info
+  syslog_facility: local0
+  activity_log_facility: local1
+
+# Well-known connection types, with option to define custom types
+# for use with local scripts, etc.
+#
+# These link connection types to their bus credentials and define
+# their logging configs.
+connections:
+  service:
+    subdomain: private
+    credentials: opensrf
+  gateway:
+    subdomain: public
+    credentials: opensrf
+    syslog_facility: local6
+  srfsh:
+    subdomain: private
+    credentials: opensrf
+    log_file: /openils/var/log/srfsh.log
+    log_level: debug
+  router:
+    subdomain: private
+    credentials: opensrf
+    syslog_facility: local2
 
 # Named groups of services.
 # Names are free-form and have no meaning outside of this configuration file.
-service-groups:
-  public-services:
+service_groups:
+  public_services:
     - opensrf.math
     - open-ils.actor
     - open-ils.acq
@@ -89,7 +119,7 @@ service-groups:
 # Avoid logging parameters for API calls -- at or above INFO level --
 # whose API name is a left-anchored match to any of the following method
 # names.
-log-protect:
+log_protect:
   - open-ils.auth.authenticate.verify
   - open-ils.auth.authenticate.complete
   - open-ils.auth.login
