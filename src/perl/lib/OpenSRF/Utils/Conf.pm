@@ -1,4 +1,6 @@
 package OpenSRF::Utils::Conf;
+use strict;
+use warnings;
 use Net::Domain qw/hostfqdn/;
 use YAML; # sudo apt install libyaml-perl
 
@@ -45,72 +47,76 @@ sub reload {
     return $self->load_file($self->{source_filename});
 }
 
+sub service_group_to_services {
+    my ($self, $group) = @_;
+    return undef unless $group;
+
+    my $services = $self->service_groups->{$group} ||
+        die "No such service group: $group\n";
+    return $services;
+}
+
 # Pull the known config values from the YAML.
 # Only settings that control bus connectivity are required.
 sub load {
     my $self = shift;
-    my $y = $self->source;
+    my $conf = $self->source;
 
-    if ($y->{'log-protect'}) {
-        $self->{log_protect} = $y->{'log-protect'};
-    }
+    $self->{bus_port} = $conf->{bus_port} || 6379;
+    $self->{log_protect} = $conf->{log_protect};
+    $self->{service_groups} = $conf->{service_groups};
 
-    if ($y->{'service-groups'}) {
-        $self->{service_groups} = $y->{'service-groups'};
-    }
-
-    my $bus = $y->{'message-bus'} || 
-        die "message-bus: configuration required\n";
-
-
-    my $creds = $bus->{'credentials'};
-    while (($key, $value) = each(%$creds)) {
+    my $creds = $conf->{credentials};
+    while (my ($key, $value) = each(%$creds)) {
         $self->{credentials}->{$key} =
-            OpenSRF::Utils::Conf::BusCredentials->new(
+            OpenSRF::Utils::Conf::Credentials->new(
                 $value->{username}, $value->{password});
     }
 
-    for my $domain (@{$bus->{domains}}) {
+    for my $domain (@{$conf->{domains}}) {
 
-        # Name of service group if set.
-        my $services;
-        if (my $name = $domain->{'allowed-services'}) {
-            $services = $self->service_groups->{$name};
-            die "No such service group: $name\n" unless $services;
-        }
+        my $private_conf = $domain->{private};
+        my $public_conf = $domain->{public};
+
+        my $private = OpenSRF::Utils::Conf::SubDomain->new(
+            $private_conf->{name},
+            $self->service_group_to_services($private_conf->{allowed_services})
+        );
+
+        my $public = OpenSRF::Utils::Conf::SubDomain->new(
+            $public_conf->{name},
+            $self->service_group_to_services($public_conf->{allowed_services})
+        );
 
         push(@{$self->{domains}},
-            OpenSRF::Utils::Conf::BusDomain->new(
-                $domain->{name},
-                $domain->{port} || 6379,
-                $services
-            )
-        );
+            OpenSRF::Utils::Conf::Domain->new($private, $public, $domain->{hosts}));
     }
 
-    my $log_defaults = $bus->{'log-defaults'} || {};
+    my $log_defaults = $conf->{log_defaults} || {};
 
-    while (($name, $connection) = each(%{$bus->{connections}})) {
+    while (my ($name, $connection) = each(%{$conf->{connections}})) {
 
+        my $subdomain = $connection->{subdomain}; # public vs. private
         my $cname = $connection->{credentials};
         my $creds = $self->credentials->{$cname};
+
         die "No such credentials: $cname\n" unless $creds;
 
-        # pull the value from the connection or the default logging configs.
-        my $lv = sub { my $t = shift; $connection->{$t} || $log_defaults->{$t} };
+        my %params;
+        for my $key (qw/
+            log_level
+            log_file
+            syslog_facility
+            activity_log_file
+            activity_log_facility
+            log_length
+            log_tag
+        /) { $params{$key} = $connection->{$key} || $log_defaults->{$key}; }
 
         $self->{connections}->{$name} =
-            OpenSRF::Utils::Conf::BusConnectionType->new(
-                $creds,
-                log_level             => $lv->('log-level'),
-                log_file              => $lv->('log-file'),
-                syslog_facility       => $lv->('syslog-facility'),
-                activity_log_file     => $lv->('activity-log-file'),
-                activity_log_facility => $lv->('activity-log-facility')
+            OpenSRF::Utils::Conf::ConnectionType->new(
+                $subdomain, $creds, %params
             );
-
-        $self->{connections}->{$name}->{log_length} = $connection->{'log-length'};
-        $self->{connections}->{$name}->{log_tag} = $connection->{'log-tag'};
     }
 }
 
@@ -120,6 +126,10 @@ sub load {
 sub source {
     my $self = shift;
     return $self->{source};
+}
+sub bus_port {
+    my $self = shift;
+    return $self->{bus_port};
 }
 sub connections {
     my $self = shift;
@@ -147,20 +157,39 @@ sub primary_connection {
     return $self->{primary_connection};
 }
 
-sub set_primary_connection {
-    my ($self, $domain, $ctype) = @_;
-    my $ct = $self->connections->{$ctype};
-    my ($dm) = grep {$_->name eq $domain} @{$self->domains};
+# Returns a Domain object
+sub get_domain_for_host {
+    my ($self, $host) = @_;
 
-    die "No such connection type: $ctyp\n" unless $ct;
-    die "No such domain: $domain\n" unless $dm;
+    for my $domain (@{$self->domains}) {
+        return $domain if grep {$_ eq $host} @{$domain->hosts};
+    }
+
+    die "No such host: $host\n";
+}
+
+# Returns the newly applied Connection
+sub set_primary_connection {
+    my ($self, $host, $connection_type) = @_;
+
+    my $ctype = $self->connections->{$connection_type};
+    die "No such connection type: $connection_type\n" unless $ctype;
+
+    my $domain = $self->get_domain_for_host($host);
+
+    # Get the subdomain where this connection type wants to connect.
+
+    my $subdomain = 
+        $ctype->subdomain eq 'public' ? $domain->public : $domain->private;
 
     $self->{primary_connection} =
-        OpenSRF::Utils::Conf::BusConnection->new($dm, $ct);
+        OpenSRF::Utils::Conf::Connection->new($subdomain, $ctype);
+
+    return $self->{primary_connection};
 }
 
 
-package OpenSRF::Utils::Conf::BusCredentials;
+package OpenSRF::Utils::Conf::Credentials;
 
 sub new {
     my ($class, $username, $password) = @_;
@@ -180,13 +209,12 @@ sub password {
     return $self->{password};
 }
 
-package OpenSRF::Utils::Conf::BusDomain;
+package OpenSRF::Utils::Conf::SubDomain;
 
 sub new {
-    my ($class, $name, $port, $allowed_services) = @_;
+    my ($class, $name, $allowed_services) = @_;
     return bless({
         name => $name,
-        port => $port,
         allowed_services => $allowed_services
     }, $class);
 }
@@ -195,10 +223,37 @@ sub name {
     my $self = shift;
     return $self->{name};
 }
-
-sub port {
+sub allowed_services {
     my $self = shift;
-    return $self->{port};
+    return $self->{allowed_services};
+}
+
+package OpenSRF::Utils::Conf::Domain;
+
+sub new {
+    my ($class, $private_domain, $public_domain, $hosts) = @_;
+    return bless({
+        private => $private_domain,
+        public => $public_domain,
+        hosts => $hosts
+    }, $class);
+}
+
+sub hosts {
+    my $self = shift;
+    return $self->{hosts};
+}
+sub private {
+    my $self = shift;
+    return $self->{private};
+}
+sub public {
+    my $self = shift;
+    return $self->{public};
+}
+sub max_queue_length {
+    my $self = shift;
+    return ($self->{max_queue_length} || 0) || 1000;
 }
 
 # Returns an array ref if this domain hosts a specific
@@ -210,19 +265,24 @@ sub allowed_services {
     return undef;
 }
 
-package OpenSRF::Utils::Conf::BusConnectionType;
+package OpenSRF::Utils::Conf::ConnectionType;
 
 sub new {
-    my ($class, $credentials, %args) = @_;
+    my ($class, $subdomain, $credentials, %args) = @_;
 
-    die "BusConnectionType requires credentials\n" unless $credentials;
+    die "ConnectionType requires domain and credentials\n" 
+        unless $subdomain && $credentials;
+
+    die "Invalid subdomain type: $subdomain"
+        unless $subdomain =~ /^(public|private)$/;
 
     return bless({credentials => $credentials, %args}, $class);
 }
 
-sub max_queue_length {
+# SubDomain object 
+sub subdomain {
     my $self = shift;
-    return ($self->{max_queue_length} || 0) || 1000;
+    return $self->{subdomain};
 }
 sub credentials {
     my $self = shift;
@@ -257,23 +317,23 @@ sub log_tag {
     return $self->{log_tag};
 }
 
-package OpenSRF::Utils::Conf::BusConnection;
+package OpenSRF::Utils::Conf::Connection;
 
 sub new {
-    my ($class, $domain, $connection_type) = @_;
+    my ($class, $subdomain, $connection_type) = @_;
     return bless({
-        domain => $domain,
+        subdomain => $subdomain,
         connection_type => $connection_type
     }, $class);
 }
 
-# BusDomain object
-sub domain {
+# SubDomain object
+sub subdomain {
     my $self = shift;
-    return $self->{domain};
+    return $self->{subdomain};
 }
 
-# BusConnectionType object
+# ConnectionType object
 sub connection_type {
     my $self = shift;
     return $self->{connection_type};
