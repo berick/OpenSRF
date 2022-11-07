@@ -88,7 +88,7 @@ connections:
     log_file: /openils/var/log/srfsh.log
     log_level: debug
   router:
-    subdomain: private
+    # Routers connect to all subdomains.
     credentials: opensrf
     syslog_facility: local2
 
