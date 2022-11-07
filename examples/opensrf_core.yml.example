@@ -19,14 +19,14 @@ bus_port: 6379
 
 # List of routable domains in our cluster.
 #
-# If a Domain has an "allowed_services" entry, those are the only
-# services that may launch themselves on the domain AND the only
-# services which are permitted to register with the router running on
-# the domain.  If no allowed_services entry exists, all services are
-# permitted to run on the domain and register with the domain's router.
+# A domain has one private and one public subdomain, plus a list
+# of hosts that participate in the domain as a whole.
+#
+# If a subdomain has an "allowed_services" entry, those are the only
+# services that may register with the router running on the subdomain.
+# If no allowed_services entry exists, all services are permitted to 
+# register with the subdomain's router.
 domains:
-    # Domain names are currently just used for documentation purposes.
-    # They are not referenced or used by the code.
   - name: localhost
     private: 
       name: private.localhost
@@ -36,6 +36,7 @@ domains:
     hosts:
       - localhost
 
+# -- OR --
 # Muli-server / multi-brick setup
 domains:
   - name: brick01
@@ -71,8 +72,8 @@ log_defaults:
 # Well-known connection types, with option to define custom types
 # for use with local scripts, etc.
 #
-# These link connection types to their bus subdomain type, bus credentials,
-# and define their logging configs.
+# These link connection types to their subdomain (by type), bus
+# credentials, and define their logging configs.
 connections:
   service:
     subdomain: private
