@@ -25,7 +25,10 @@ bus_port: 6379
 # the domain.  If no allowed_services entry exists, all services are
 # permitted to run on the domain and register with the domain's router.
 domains:
-  - private: 
+    # Domain names are currently just used for documentation purposes.
+    # They are not referenced or used by the code.
+  - name: localhost
+    private: 
       name: private.localhost
     public: 
       name: public.localhost
@@ -34,26 +37,27 @@ domains:
       - localhost
 
 # Muli-server / multi-brick setup
-#
-#domains:
-#  - private: 
-#      name: private.brick01.eg.example.org 
-#    public: 
-#      name: public.brick01.eg.example.org 
-#      allowed_services: public_services
-#    hosts:
-#      - main.brick01.eg.example.org
-#      - worker-01.brick01.eg.example.org
-#      - worker-02.brick01.eg.example.org
-#  - private: 
-#      name: private.brick02.eg.example.org 
-#    public: 
-#      name: public.brick02.eg.example.org 
-#      allowed_services: public_services
-#    hosts:
-#      - main.brick02.eg.example.org
-#      - worker-01.brick02.eg.example.org
-#      - worker-02.brick02.eg.example.org
+domains:
+  - name: brick01
+    private: 
+      name: private.brick01.eg.example.org 
+    public: 
+      name: public.brick01.eg.example.org 
+      allowed_services: public_services
+    hosts:
+      - main.brick01.eg.example.org
+      - worker-01.brick01.eg.example.org
+      - worker-02.brick01.eg.example.org
+  - name: brick02
+    private: 
+      name: private.brick02.eg.example.org 
+    public: 
+      name: public.brick02.eg.example.org 
+      allowed_services: public_services
+    hosts:
+      - main.brick02.eg.example.org
+      - worker-01.brick02.eg.example.org
+      - worker-02.brick02.eg.example.org
 
 
 # Default log config values.
