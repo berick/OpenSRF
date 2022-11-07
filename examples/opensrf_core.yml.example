@@ -36,8 +36,7 @@ domains:
 # Muli-server / multi-brick setup
 #
 #domains:
-#  brick01.eg.example.org:
-#    private: 
+#  - private: 
 #      name: private.brick01.eg.example.org 
 #    public: 
 #      name: public.brick01.eg.example.org 
@@ -46,8 +45,7 @@ domains:
 #      - main.brick01.eg.example.org
 #      - worker-01.brick01.eg.example.org
 #      - worker-02.brick01.eg.example.org
-#  brick02.eg.example.org:
-#    private: 
+#  - private: 
 #      name: private.brick02.eg.example.org 
 #    public: 
 #      name: public.brick02.eg.example.org 
@@ -69,8 +67,8 @@ log_defaults:
 # Well-known connection types, with option to define custom types
 # for use with local scripts, etc.
 #
-# These link connection types to their bus credentials and define
-# their logging configs.
+# These link connection types to their bus subdomain type, bus credentials,
+# and define their logging configs.
 connections:
   service:
     subdomain: private
