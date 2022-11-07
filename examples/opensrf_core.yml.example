@@ -27,7 +27,7 @@ bus_port: 6379
 # If no allowed_services entry exists, all services are permitted to 
 # register with the subdomain's router.
 domains:
-  - name: localhost
+  - name: local
     private: 
       name: private.localhost
     public: 
