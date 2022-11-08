@@ -636,9 +636,9 @@ sub do_reset_message_bus {
         die "No configuration for domain: $domain\n";
 
     # Set up permissions for all credentials on our domains.
-    for my $subdomain ($domain_conf->private, $domain_conf->public) {
-        my $name = $subdomain->name;
-        my $port = $subdomain->port;
+    for my $node ($domain_conf->private_node, $domain_conf->public_node) {
+        my $name = $node->name;
+        my $port = $node->port;
 
         # This redis connection uses the "default" account, which has
         # access to all actions and keys so it can manage access for

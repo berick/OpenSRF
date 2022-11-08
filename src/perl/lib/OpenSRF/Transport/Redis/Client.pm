@@ -9,7 +9,7 @@ use OpenSRF::Transport;
 use OpenSRF::Transport::Redis::Message;
 use OpenSRF::Transport::Redis::BusConnection;
 
-# Map of bus domains to bus connections.
+# Map of bus node names to bus connections.
 my %connections;
 
 # There will only be one Client per process, but each client may
@@ -34,11 +34,11 @@ sub new {
     my $pc = OpenSRF::Utils::Conf->current->primary_connection
         || die "Primary connection required\n";
 
-    my $domain = $pc->subdomain->name;
+    my $node_name = $pc->node->name;
 
-    # Create a connection for our primary domain.
-    $self->add_connection($domain);
-    $self->{primary_domain} = $domain;
+    # Create a connection for our primary node.
+    $self->add_connection($node_name);
+    $self->{primary_node_name} = $node_name;
 
     if ($service) {
         # If we're a service, this is where we listen for service-level requests.
@@ -64,25 +64,25 @@ sub connection_type {
 }
 
 sub add_connection {
-    my ($self, $domain) = @_;
+    my ($self, $node_name) = @_;
 
     my $conf = OpenSRF::Utils::Conf->current;
     my $pc = $conf->primary_connection;
     my $ctype = $pc->connection_type;
-    my $subdomain = $conf->get_subdomain($domain);
+    my $node = $conf->get_node($node_name);
 
     # Assumes other connection parameters are the same across
     # Redis instances, apart from the hostname.
     my $connection = OpenSRF::Transport::Redis::BusConnection->new(
-        $subdomain->name,
-        $subdomain->port, 
+        $node->name,
+        $node->port, 
         $ctype->credentials->username, 
         $ctype->credentials->password,
-        $subdomain->max_queue_length
+        $node->max_queue_length
     );
 
     $connection->set_address($self->service);
-    $connections{$domain} = $connection;
+    $connections{$node_name} = $connection;
     
     $connection->connect;
 
@@ -90,16 +90,16 @@ sub add_connection {
 }
 
 sub get_connection {
-    my ($self, $domain) = @_;
+    my ($self, $node_name) = @_;
 
-    my $con = $connections{$domain};
+    my $con = $connections{$node_name};
 
     return $con if $con;
 
-    eval { $con = $self->add_connection($domain) };
+    eval { $con = $self->add_connection($node_name) };
 
     if ($@) {
-        $logger->error("Could not connect to bus on domain: $domain : $@");
+        $logger->error("Could not connect to bus on node: $node_name : $@");
         return undef;
     }
 
@@ -120,23 +120,23 @@ sub service_address {
     return $self->{service_address};
 }
 
-sub primary_domain {
+sub primary_node_name {
     my $self = shift;
-    return $self->{primary_domain};
+    return $self->{primary_node_name};
 }
 
 sub primary_connection {
     my $self = shift;
-    return $connections{$self->primary_domain};
+    return $connections{$self->primary_node_name};
 }
 
 sub disconnect {
-    my ($self, $domain) = @_;
+    my ($self, $node_name) = @_;
 
-    for my $domain (keys %connections) {
-        my $con = $connections{$domain};
-        $con->disconnect($self->primary_domain eq $domain);
-        delete $connections{$domain};
+    for my $node_name (keys %connections) {
+        my $con = $connections{$node_name};
+        $con->disconnect($self->primary_node_name eq $node_name);
+        delete $connections{$node_name};
     }
 }
 
@@ -186,15 +186,15 @@ sub send {
     my $con = $self->primary_connection;
 
     if ($recipient =~ /^opensrf:client/o) {
-        # Clients may be lurking on remote domains.
-        # Make sure we have a connection to said domain.
+        # Clients may be lurking on remote nodes.
+        # Make sure we have a connection to said node.
 
-        # opensrf:client:domain:...
-        my (undef, undef, $domain) = split(/:/, $recipient);
+        # opensrf:client:node_name:...
+        my (undef, undef, $node_name) = split(/:/, $recipient);
 
-        my $con = $self->get_connection($domain);
+        my $con = $self->get_connection($node_name);
         if (!$con) {
-            $logger->error("Cannot send message to domain $domain: $msg_json");
+            $logger->error("Cannot send message to node $node_name: $msg_json");
             return;
         }
     }
