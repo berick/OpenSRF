@@ -34,7 +34,7 @@ sub new {
     my $pc = OpenSRF::Utils::Conf->current->primary_connection
         || die "Primary connection required\n";
 
-    my $domain = $pc->domain->name;
+    my $domain = $pc->subdomain->name;
 
     # Create a connection for our primary domain.
     $self->add_connection($domain);
@@ -53,6 +53,7 @@ sub new {
 
 sub reset {                                                                    
     return unless $_singleton;
+    $logger->debug("Redis client disconnecting on reset()");
     $_singleton->disconnect;
     $_singleton = undef;
 } 
@@ -65,17 +66,19 @@ sub connection_type {
 sub add_connection {
     my ($self, $domain) = @_;
 
-    my $pc = OpenSRF::Utils::Conf->current->primary_connection;
+    my $conf = OpenSRF::Utils::Conf->current;
+    my $pc = $conf->primary_connection;
     my $ctype = $pc->connection_type;
+    my $subdomain = $conf->get_subdomain($domain);
 
     # Assumes other connection parameters are the same across
     # Redis instances, apart from the hostname.
     my $connection = OpenSRF::Transport::Redis::BusConnection->new(
-        $domain, 
-        $ctype->port, 
-        $ctype->username, 
-        $ctype->password,
-        $ctype->max_queue_length
+        $subdomain->name,
+        $subdomain->port, 
+        $ctype->credentials->username, 
+        $ctype->credentials->password,
+        $subdomain->max_queue_length
     );
 
     $connection->set_address($self->service);

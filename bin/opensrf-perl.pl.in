@@ -16,7 +16,7 @@
 # ---------------------------------------------------------------
 use strict; use warnings;
 use Getopt::Long;
-use Net::Domain qw/hostfqdn/;
+use Net::Domain qw/hostfqdn hostdomain/;
 use POSIX qw/setsid :sys_wait_h/;
 use OpenSRF::Utils::Logger q/$logger/;
 use OpenSRF::System;
@@ -33,6 +33,7 @@ my $opt_pid_dir = "@PID_DIR@/run/opensrf";
 my $opt_no_daemon = 0;
 my $opt_settings_pause = 0;
 my $opt_localhost = 0;
+my $opt_domain;
 my $opt_help = 0;
 my $opt_shutdown_graceful = 0;
 my $opt_shutdown_fast = 0;
@@ -69,6 +70,7 @@ my @perl_services;
 my @nonperl_services;
 my %max_children_map;
 my $hostname = $ENV{OSRF_HOSTNAME} || hostfqdn();
+my $domain = $ENV{OSRF_DOMAIN} || hostdomain();
 
 GetOptions(
     'service=s' => \$opt_service,
@@ -77,6 +79,7 @@ GetOptions(
     'no-daemon' => \$opt_no_daemon,
     'settings-startup-pause=i' => \$opt_settings_pause,
     'localhost' => \$opt_localhost,
+    'domain=s' => \$opt_domain,
     'help' => \$opt_help,
     'quiet' => \$opt_quiet,
     'graceful-shutdown' => \$opt_shutdown_graceful,
@@ -111,12 +114,20 @@ GetOptions(
 ) || warn "\n$!\n" && exit(1);                                                 
 
 
+if ($opt_domain) {
+    $ENV{OSRF_DOMAIN} = $domain = $opt_domain;
+} elsif ($opt_localhost) {
+    # Domain defaults to "localhost" if use-localhost is specified
+    # and no command-line domain value is provided.
+    $ENV{OSRF_DOMAIN} = $domain = 'localhost';
+}
+
 if ($opt_localhost) {
     $hostname = 'localhost';
     $ENV{OSRF_HOSTNAME} = $hostname;
 }
 
-my $C_COMMAND = "opensrf-c -c $opt_config -x service -p $opt_pid_dir -h $hostname";
+my $C_COMMAND = "opensrf-c -c $opt_config -x service -p $opt_pid_dir -h $hostname -d $domain";
 
 sub verify_services {
     my $service = shift;
@@ -320,7 +331,11 @@ sub do_stop {
 sub do_init {
     my $fail_ok = shift;
 
-    OpenSRF::System->bootstrap_client(config_file => $opt_config);
+    OpenSRF::System->bootstrap_client(
+        config_file => $opt_config,
+        connection_type => 'service',
+        domain => $domain
+    );
 
     if (!OpenSRF::Transport::PeerHandle->retrieve) {
         return 0 if $fail_ok;
@@ -396,7 +411,7 @@ sub do_start {
 
     if(grep { $_ eq $service } @perl_services) {
         return unless do_daemon($service);
-        OpenSRF::System->run_service($service, $opt_pid_dir);
+        OpenSRF::System->run_service($service, $domain, $opt_pid_dir);
 
     } else {
         # note: we don't daemonize non-perl services, but instead
@@ -416,13 +431,13 @@ sub do_start {
 
 
 sub do_start_all {
-    msg("starting router and services for $hostname");
+    msg("starting router and services for $hostname\@$domain");
     #do_start('router');
     return do_start_services();
 }
 
 sub do_start_services {
-    msg("starting services for $hostname");
+    msg("starting services for $hostname\@$domain");
 
     if(grep {$_ eq 'opensrf.settings'} @perl_services) {
         do_start('opensrf.settings');
@@ -545,7 +560,7 @@ sub do_stop_services {
     my @signals = @_;
     @signals = qw/TERM INT KILL/ unless @signals;
 
-    msg("stopping services for $hostname");
+    msg("stopping services for $hostname\@$domain");
     my @services = get_service_list_from_files();
 
     for my $signal (@signals) {
@@ -604,32 +619,31 @@ sub do_daemon {
 # parses the local settings file
 sub load_settings {
     my $conf = OpenSRF::Utils::Conf->current;
-    my $cfile = $conf->{'settings-config'};
+    my $cfile = $conf->settings_config;
     return unless $cfile;
     my $parser = OpenSRF::Utils::SettingsParser->new();
     $parser->initialize( $cfile );
     $OpenSRF::Utils::SettingsClient::host_config =
-        $parser->get_server_config($conf->env->hostname);
+        $parser->get_server_config($conf->hostname);
 }
 
 # Clear and reset permissions on the bus'es linked to our domain.
 sub do_reset_message_bus {
 
-    my $conf = OpenSRF::Utils::Conf->new;
-    $conf->load_file($opt_config);
-    my $domain = $conf->get_domain_for_host($hostname);
-    my $port = $conf->bus_port;
+    my $conf = OpenSRF::Utils::Conf->from_file($opt_config);
+
+    my $domain_conf = $conf->domains->{$domain} ||
+        die "No configuration for domain: $domain\n";
 
     # Set up permissions for all credentials on our domains.
-    for my $domain ($domain->private->name, $domain->public->name) {
-
-        # We must connect to each domain we need to reset.
-        # my $primary = $conf->set_primary_connection($domain, "service");
+    for my $subdomain ($domain_conf->private, $domain_conf->public) {
+        my $name = $subdomain->name;
+        my $port = $subdomain->port;
 
         # This redis connection uses the "default" account, which has
         # access to all actions and keys so it can manage access for
         # various opensrf account types.
-        my @connect_args = (server => "$domain:$port");
+        my @connect_args = (server => "$name:$port");
 
         my $redis = Redis->new(@connect_args) or 
             die "Cannot connect to Redis instance at @connect_args\n";
@@ -691,6 +705,11 @@ sub do_help {
     --localhost
         Force the hostname to be 'localhost', instead of the fully qualified
         domain name for the machine.
+
+    --domain
+        Set an explicit message bus domain.  
+        Defaults to the domain of the host, unless --localhsot is set,
+        in which case it defaults to "localhost"
 
     --service <service>
         Specifies which OpenSRF service to control

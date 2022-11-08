@@ -31,7 +31,7 @@ sub load_bootstrap_config {
     die "Please provide a bootstrap config file to OpenSRF::System\n"
         unless $bootstrap_config_file;
 
-    OpenSRF::Utils::Conf->new->load_file($bootstrap_config_file);
+    OpenSRF::Utils::Conf->from_file($bootstrap_config_file);
     OpenSRF::Utils::JSON->register_class_hint(
         name => 'OpenSRF::Application', hint => 'method', type => 'hash', strip => ['session']);
     OpenSRF::Transport::PeerHandle->set_peer_client('OpenSRF::Transport::Redis::PeerConnection');
@@ -61,8 +61,11 @@ sub bootstrap_client {
     my $app = $params{client_name} || "client";
 
     my $connection_type = $params{connection_type} || 'service';
+    my $domain = $params{domain} || die "bootstrap_client() requires a domain\n";
 
     load_bootstrap_config();
+
+    OpenSRF::Utils::Conf->current->set_primary_connection($domain, $connection_type);
     OpenSRF::Utils::Logger::set_config(undef, $connection_type);
     OpenSRF::Transport::PeerHandle->construct($connection_type);
 }
@@ -75,12 +78,16 @@ sub connected {
 }
 
 sub run_service {
-    my($class, $service, $pid_dir) = @_;
+    my($class, $service, $domain, $pid_dir) = @_;
 
     $0 = "OpenSRF Listener [$service]";
 
     # temp connection to use for application initialization
-    OpenSRF::System->bootstrap_client(client_name => $service);
+    OpenSRF::System->bootstrap_client(
+        client_name => $service,
+        connection_type => 'service',
+        domain => $domain
+    );
 
     my $sclient = OpenSRF::Utils::SettingsClient->new;
     my $getval = sub { $sclient->config_value(apps => $service => @_); };

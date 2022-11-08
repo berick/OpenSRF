@@ -13,10 +13,6 @@ credentials:
     username: opensrf
     password: password
 
-# Assumes this is the same for all domains / subdomains.
-# Do we need to support per-domain (or per-subdomain) ports?
-bus_port: 6379
-
 # List of routable domains in our cluster.
 #
 # A domain has one private and one public subdomain, plus a list
@@ -27,47 +23,35 @@ bus_port: 6379
 # If no allowed_services entry exists, all services are permitted to 
 # register with the subdomain's router.
 domains:
-  - name: local
+  - name: localhost
     private: 
       name: private.localhost
+      port: 6379
     public: 
       name: public.localhost
+      port: 6379
       allowed_services: public_services
-    hosts:
-      - localhost
 
 # -- OR --
 # Muli-server / multi-brick setup
-domains:
-  - name: brick01
-    private: 
-      name: private.brick01.eg.example.org 
-    public: 
-      name: public.brick01.eg.example.org 
-      allowed_services: public_services
-    hosts:
-      - main.brick01.eg.example.org
-      - worker-01.brick01.eg.example.org
-      - worker-02.brick01.eg.example.org
-  - name: brick02
-    private: 
-      name: private.brick02.eg.example.org 
-    public: 
-      name: public.brick02.eg.example.org 
-      allowed_services: public_services
-    hosts:
-      - main.brick02.eg.example.org
-      - worker-01.brick02.eg.example.org
-      - worker-02.brick02.eg.example.org
+#domains:
+#  - name: brick01.eg.example.org
+#    private: 
+#      name: private.brick01.eg.example.org 
+#      port: 6379
+#    public: 
+#      name: public.brick01.eg.example.org 
+#      port: 6379
+#      allowed_services: public_services
+#  - name: brick02.eg.example.org
+#    private: 
+#      name: private.brick02.eg.example.org 
+#      port: 6379
+#    public: 
+#      name: public.brick02.eg.example.org 
+#      port: 6379
+#      allowed_services: public_services
 
-
-# Default log config values.
-# Values are optionally overridden in the connections: configs.
-log_defaults:
-  log_file: syslog
-  log_level: info
-  syslog_facility: local0
-  activity_log_facility: local1
 
 # Well-known connection types, with option to define custom types
 # for use with local scripts, etc.
@@ -78,19 +62,36 @@ connections:
   service:
     subdomain: private
     credentials: opensrf
+    log_file: syslog
+    log_level: debug
+    syslog_facility: local0
+    activity_log_facility: local1
   gateway:
     subdomain: public
     credentials: opensrf
+    log_file: syslog
+    log_level: info
     syslog_facility: local6
+    activity_log_facility: local1
   srfsh:
     subdomain: private
     credentials: opensrf
     log_file: /openils/var/log/srfsh.log
     log_level: debug
-  router:
-    # Routers connect to all subdomains.
+  public_router:
+    subdomain: public
     credentials: opensrf
+    log_file: syslog
+    log_level: info
     syslog_facility: local2
+  private_router:
+    subdomain: private
+    credentials: opensrf
+    log_file: syslog
+    log_level: info
+    syslog_facility: local2
+
+settings_config: /openils/conf/opensrf.xml
 
 # Named groups of services.
 # Names are free-form and have no meaning outside of this configuration file.
