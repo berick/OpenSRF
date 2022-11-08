@@ -74,9 +74,18 @@ sub set_config {
         return;
     }
 
-    $config = $config->connections->{$connection_type};
+    $config = $config->connections->{$connection_type} ||
+        die "No such connection type: $connection_type\n";
 
     $loglevel =  $config->log_level;
+
+    if (!int($loglevel)) {
+        $loglevel = 5 if $loglevel =~ /trace/i;
+        $loglevel = 4 if $loglevel =~ /debug/i;
+        $loglevel = 3 if $loglevel =~ /info/i;
+        $loglevel = 2 if $loglevel =~ /warn/i;
+        $loglevel = 1 if $loglevel =~ /error/i;
+    }
 
     if ($config->log_length) {
         $max_log_msg_len = $config->bootstrap->loglength;

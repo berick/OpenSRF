@@ -82,13 +82,13 @@ connections:
     subdomain: public
     credentials: opensrf
     log_file: syslog
-    log_level: info
+    log_level: debug
     syslog_facility: local2
   private_router:
     subdomain: private
     credentials: opensrf
     log_file: syslog
-    log_level: info
+    log_level: debug
     syslog_facility: local2
 
 settings_config: /openils/conf/opensrf.xml
