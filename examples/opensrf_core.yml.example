@@ -15,19 +15,19 @@ credentials:
 
 # List of routable domains in our cluster.
 #
-# A domain has one private and one public subdomain, plus a list
+# A domain has one private and one public node, plus a list
 # of hosts that participate in the domain as a whole.
 #
-# If a subdomain has an "allowed_services" entry, those are the only
-# services that may register with the router running on the subdomain.
+# If a node has an "allowed_services" entry, those are the only
+# services that may register with the router running on the node.
 # If no allowed_services entry exists, all services are permitted to 
-# register with the subdomain's router.
+# register with the node's router.
 domains:
   - name: localhost
-    private: 
+    private_node: 
       name: private.localhost
       port: 6379
-    public: 
+    public_node: 
       name: public.localhost
       port: 6379
       allowed_services: public_services
@@ -56,36 +56,36 @@ domains:
 # Well-known connection types, with option to define custom types
 # for use with local scripts, etc.
 #
-# These link connection types to their subdomain (by type), bus
+# These link connection types to their node type, bus
 # credentials, and define their logging configs.
 connections:
   service:
-    subdomain: private
+    node_type: private
     credentials: opensrf
     log_file: syslog
-    log_level: debug
+    log_level: trace
     syslog_facility: local0
     activity_log_facility: local1
   gateway:
-    subdomain: public
+    node_type: public
     credentials: opensrf
     log_file: syslog
     log_level: info
     syslog_facility: local6
     activity_log_facility: local1
   srfsh:
-    subdomain: private
+    node_type: private
     credentials: opensrf
     log_file: /openils/var/log/srfsh.log
     log_level: debug
   public_router:
-    subdomain: public
+    node_type: public
     credentials: opensrf
     log_file: syslog
     log_level: debug
     syslog_facility: local2
   private_router:
-    subdomain: private
+    node_type: private
     credentials: opensrf
     log_file: syslog
     log_level: debug

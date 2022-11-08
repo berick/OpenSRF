@@ -85,16 +85,16 @@ sub load {
     for my $domain (@{$conf->{domains}}) {
 
         my $name = $domain->{name};
-        my $private_conf = $domain->{private};
-        my $public_conf = $domain->{public};
+        my $private_conf = $domain->{private_node};
+        my $public_conf = $domain->{public_node};
 
-        my $private = OpenSRF::Utils::Conf::SubDomain->new(
+        my $private_node = OpenSRF::Utils::Conf::Node->new(
             $private_conf->{name},
             $private_conf->{port},
             $self->service_group_to_services($private_conf->{allowed_services})
         );
 
-        my $public = OpenSRF::Utils::Conf::SubDomain->new(
+        my $public_node = OpenSRF::Utils::Conf::Node->new(
             $public_conf->{name},
             $public_conf->{port},
             $self->service_group_to_services($public_conf->{allowed_services})
@@ -102,14 +102,14 @@ sub load {
 
         $self->{domains}->{$name} = 
             OpenSRF::Utils::Conf::Domain->new(
-            $name, $private, $public, $domain->{hosts});
+            $name, $private_node, $public_node, $domain->{hosts});
     }
 
     my $log_defaults = $conf->{log_defaults} || {};
 
     while (my ($name, $connection) = each(%{$conf->{connections}})) {
 
-        my $subdomain = $connection->{subdomain}; # public vs. private
+        my $node_type = $connection->{node_type}; # public vs. private
         my $cname = $connection->{credentials};
         my $creds = $self->credentials->{$cname};
 
@@ -128,7 +128,7 @@ sub load {
 
         $self->{connections}->{$name} =
             OpenSRF::Utils::Conf::ConnectionType->new(
-                $subdomain, $creds, %params
+                $node_type, $creds, %params
             );
     }
 }
@@ -165,15 +165,17 @@ sub primary_connection {
     my $self = shift;
     return $self->{primary_connection};
 }
-sub get_subdomain {
-    my ($self, $subdomain) = @_;
+sub get_node {
+    my ($self, $node_name) = @_;
     for my $domain (values(%{$self->domains})) {
-        return $domain->private if $domain->private->name eq $subdomain;
-        return $domain->public if $domain->public->name eq $subdomain;
+        return $domain->private_node if $domain->private_node->name eq $node_name;
+        return $domain->public_node if $domain->public_node->name eq $node_name;
     }
-    die "No such subdomain: $subdomain\n";
+    die "No such node: $node_name\n";
 }
 
+# Sets the primary connection to the provided type and domain.
+# The physical node is determimed by the connection type.
 # Returns the newly applied Connection
 sub set_primary_connection {
     my ($self, $domain_name, $connection_type) = @_;
@@ -184,13 +186,12 @@ sub set_primary_connection {
     my $domain = $self->domains->{$domain_name}
         || "No configuration for domain: $domain_name\n";
 
-    # Get the subdomain where this connection type wants to connect.
+    # Get the node where this connection type wants to connect.
 
-    my $subdomain = 
-        $ctype->subdomain eq 'public' ? $domain->public : $domain->private;
+    my $node = ($ctype->node_type =~ /public/i) ? $domain->public_node : $domain->private_node;
 
     $self->{primary_connection} =
-        OpenSRF::Utils::Conf::Connection->new($subdomain, $ctype);
+        OpenSRF::Utils::Conf::Connection->new($node, $ctype);
 
     return $self->{primary_connection};
 }
@@ -216,7 +217,7 @@ sub password {
     return $self->{password};
 }
 
-package OpenSRF::Utils::Conf::SubDomain;
+package OpenSRF::Utils::Conf::Node;
 
 sub new {
     my ($class, $name, $port, $allowed_services) = @_;
@@ -237,7 +238,9 @@ sub port {
 }
 sub allowed_services {
     my $self = shift;
-    return $self->{allowed_services};
+    my $s = $self->{allowed_services};
+    return $s if $s && ref $s eq 'ARRAY' && @$s > 0;
+    return undef;
 }
 sub max_queue_length {
     my $self = shift;
@@ -247,57 +250,45 @@ sub max_queue_length {
 package OpenSRF::Utils::Conf::Domain;
 
 sub new {
-    my ($class, $name, $private_domain, $public_domain, $hosts) = @_;
+    my ($class, $name, $private_node, $public_node, $hosts) = @_;
     return bless({
         name => $name,
-        private => $private_domain,
-        public => $public_domain,
+        private_node => $private_node,
+        public_node => $public_node,
         hosts => $hosts
     }, $class);
 }
-
 sub hosts {
     my $self = shift;
     return $self->{hosts};
 }
-sub private {
+sub private_node {
     my $self = shift;
-    return $self->{private};
+    return $self->{private_node};
 }
-sub public {
+sub public_node {
     my $self = shift;
-    return $self->{public};
-}
-
-
-# Returns an array ref if this domain hosts a specific
-# set of services.  Returns undef otherwise.
-sub allowed_services {
-    my $self = shift;
-    my $s = $self->{allowed_services};
-    return $s if $s && ref $s eq 'ARRAY' && @$s > 0;
-    return undef;
+    return $self->{public_node};
 }
 
 package OpenSRF::Utils::Conf::ConnectionType;
 
 sub new {
-    my ($class, $subdomain, $credentials, %args) = @_;
+    my ($class, $node_type, $credentials, %args) = @_;
 
     die "ConnectionType requires domain and credentials\n" 
-        unless $subdomain && $credentials;
+        unless $node_type && $credentials;
 
-    die "Invalid subdomain type: $subdomain"
-        unless $subdomain =~ /^(public|private)$/;
+    die "Invalid node_type type: $node_type"
+        unless $node_type =~ /^(public|private)$/i;
 
     return bless({
-        credentials => $credentials, subdomain => $subdomain, %args}, $class);
+        credentials => $credentials, node_type => $node_type, %args}, $class);
 }
 
-# SubDomain object 
-sub subdomain {
+sub node_type {
     my $self = shift;
-    return $self->{subdomain};
+    return $self->{node_type};
 }
 sub credentials {
     my $self = shift;
@@ -335,17 +326,17 @@ sub log_tag {
 package OpenSRF::Utils::Conf::Connection;
 
 sub new {
-    my ($class, $subdomain, $connection_type) = @_;
+    my ($class, $node, $connection_type) = @_;
     return bless({
-        subdomain => $subdomain,
+        node => $node,
         connection_type => $connection_type
     }, $class);
 }
 
-# SubDomain object
-sub subdomain {
+# Node object
+sub node {
     my $self = shift;
-    return $self->{subdomain};
+    return $self->{node};
 }
 
 # ConnectionType object
