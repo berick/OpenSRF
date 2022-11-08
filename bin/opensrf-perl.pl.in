@@ -670,6 +670,7 @@ sub do_reset_message_bus {
                 +xtrim 
                 +del 
                 ~opensrf:router:*
+                ~opensrf:service:*
                 ~opensrf:client:*
             /;
 

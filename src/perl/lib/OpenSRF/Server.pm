@@ -471,7 +471,7 @@ sub register_routers {
     my $conf = OpenSRF::Utils::Conf->current;
     my @domains;
 
-    for my $domain (@{$conf->domains}) {
+    for my $domain (values(%{$conf->domains})) {
         for my $subdomain ($domain->public, $domain->private) {
             if (my $list = $subdomain->allowed_services) {
                 if (!(grep {$_ eq $self->service} @$list)) {
@@ -491,7 +491,7 @@ sub register_routers {
         $logger->info("server: registering with router $domain");
         $self->{osrf_handle}->send(
             to => "opensrf:router:$domain",
-            body => 'registering',
+            body => '"registering"',
             router_command => 'register',
             router_class => $self->service
         );
@@ -512,7 +512,7 @@ sub unregister_routers {
         $logger->info("server: disconnecting from router $domain");
         $self->{osrf_handle}->send(
             to => "opensrf:router:$domain",
-            body => "unregistering",
+            body => '"unregistering"',
             router_command => "unregister",
             router_class => $self->{service}
         );

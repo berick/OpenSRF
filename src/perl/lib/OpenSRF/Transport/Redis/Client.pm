@@ -145,6 +145,10 @@ sub connected {
     return $self->primary_connection && $self->primary_connection->connected;
 }
 
+sub tcp_connected {
+    my $self = shift;
+    return $self->connected;
+}
 
 sub create_service_stream {
     my $self = shift;
