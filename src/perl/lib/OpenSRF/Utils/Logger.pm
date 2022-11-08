@@ -76,7 +76,7 @@ sub set_config {
 
     $config = $config->connections->{$connection_type};
 
-    $loglevel =  $config->loglevel;
+    $loglevel =  $config->log_level;
 
     if ($config->log_length) {
         $max_log_msg_len = $config->bootstrap->loglength;
@@ -88,7 +88,7 @@ sub set_config {
     if($logfile =~ /^syslog/) {
         $syslog_enabled = 1;
         $logfile_enabled = 0;
-        $facility = $config->log_facility;
+        $facility = $config->syslog_facility;
         $facility = _fac_to_const($facility);
         # OSRF_ADOPT_SYSLOG means we assume syslog is already
         # opened w/ the correct values.  Don't clobber it.
@@ -105,7 +105,7 @@ sub set_config {
         # --------------------------------------------------------------
         $act_syslog_enabled = 1;
         $act_logfile_enabled = 0;
-        $actfac = $config->act_facility || $config->log_facility;
+        $actfac = $config->activity_log_facility || $config->log_facility;
         $actfac = _fac_to_const($actfac);
         $actfile = undef;
     } else {
@@ -118,19 +118,7 @@ sub set_config {
         $actfile = $config->actlog_file || $config->log_file;
     }
 
-    my $client = $config->generate_xid || '';
-
-    if ($ENV{OSRF_LOG_CLIENT} or $ENV{MOD_PERL}) {
-        $isclient = 1;
-        return;
-    }
-
-    if (!$client) {
-        $isclient = 0;
-        return;
-    }
-
-    $isclient = ($client =~ /^true$/iog) ?  1 : 0;
+    $isclient = ($ENV{OSRF_LOG_CLIENT} || $ENV{MOD_PERL});
 }
 
 sub _fac_to_const {

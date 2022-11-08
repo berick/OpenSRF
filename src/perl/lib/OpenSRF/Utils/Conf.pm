@@ -1,20 +1,20 @@
 package OpenSRF::Utils::Conf;
 use strict;
 use warnings;
-use Net::Domain qw/hostfqdn/;
+use Net::Domain qw/hostfqdn hostdomain/;
 use YAML; # sudo apt install libyaml-perl
 
 my $singleton;
 
-sub new {
-    my $class = shift;
-    my $self = $singleton = bless({});
-    $self->reset;
-    return $self;
-}
-
 sub current {
     $singleton
+}
+
+sub from_file {
+    my ($class, $filename) = @_;
+    my $self = $singleton = bless({});
+    $self->load_file($filename);
+    return $self;
 }
 
 # Does not reset our primary_connection
@@ -23,7 +23,7 @@ sub reset {
     $self->{source} = undef;
     $self->{connections} = {};
     $self->{credentials} = {};
-    $self->{domains} = [];
+    $self->{domains} = {};
     $self->{service_groups} = {};
     $self->{log_protect} = [];
 }
@@ -38,7 +38,16 @@ sub load_file {
 
 # This is handy
 sub hostname {
-    hostfqdn();
+    $ENV{OSRF_HOSTNAME} || hostfqdn();
+}
+
+sub domain {
+    $ENV{OSRF_DOMAIN} || hostdomain();
+}
+
+sub settings_config {
+    my $self = shift;
+    return $self->{settings_config};
 }
 
 # Re-read the configuration
@@ -62,7 +71,7 @@ sub load {
     my $self = shift;
     my $conf = $self->source;
 
-    $self->{bus_port} = $conf->{bus_port} || 6379;
+    $self->{settings_config} = $conf->{settings_config};
     $self->{log_protect} = $conf->{log_protect};
     $self->{service_groups} = $conf->{service_groups};
 
@@ -75,21 +84,25 @@ sub load {
 
     for my $domain (@{$conf->{domains}}) {
 
+        my $name = $domain->{name};
         my $private_conf = $domain->{private};
         my $public_conf = $domain->{public};
 
         my $private = OpenSRF::Utils::Conf::SubDomain->new(
             $private_conf->{name},
+            $private_conf->{port},
             $self->service_group_to_services($private_conf->{allowed_services})
         );
 
         my $public = OpenSRF::Utils::Conf::SubDomain->new(
             $public_conf->{name},
+            $public_conf->{port},
             $self->service_group_to_services($public_conf->{allowed_services})
         );
 
-        push(@{$self->{domains}},
-            OpenSRF::Utils::Conf::Domain->new($private, $public, $domain->{hosts}));
+        $self->{domains}->{$name} = 
+            OpenSRF::Utils::Conf::Domain->new(
+            $name, $private, $public, $domain->{hosts});
     }
 
     my $log_defaults = $conf->{log_defaults} || {};
@@ -127,10 +140,6 @@ sub source {
     my $self = shift;
     return $self->{source};
 }
-sub bus_port {
-    my $self = shift;
-    return $self->{bus_port};
-}
 sub connections {
     my $self = shift;
     return $self->{connections};
@@ -156,26 +165,24 @@ sub primary_connection {
     my $self = shift;
     return $self->{primary_connection};
 }
-
-# Returns a Domain object
-sub get_domain_for_host {
-    my ($self, $host) = @_;
-
-    for my $domain (@{$self->domains}) {
-        return $domain if grep {$_ eq $host} @{$domain->hosts};
+sub get_subdomain {
+    my ($self, $subdomain) = @_;
+    for my $domain (values(%{$self->domains})) {
+        return $domain->private if $domain->private->name eq $subdomain;
+        return $domain->public if $domain->public->name eq $subdomain;
     }
-
-    die "No such host: $host\n";
+    die "No such subdomain: $subdomain\n";
 }
 
 # Returns the newly applied Connection
 sub set_primary_connection {
-    my ($self, $host, $connection_type) = @_;
+    my ($self, $domain_name, $connection_type) = @_;
 
-    my $ctype = $self->connections->{$connection_type};
-    die "No such connection type: $connection_type\n" unless $ctype;
+    my $ctype = $self->connections->{$connection_type} ||
+        die "No such connection type: $connection_type\n";
 
-    my $domain = $self->get_domain_for_host($host);
+    my $domain = $self->domains->{$domain_name}
+        || "No configuration for domain: $domain_name\n";
 
     # Get the subdomain where this connection type wants to connect.
 
@@ -212,9 +219,10 @@ sub password {
 package OpenSRF::Utils::Conf::SubDomain;
 
 sub new {
-    my ($class, $name, $allowed_services) = @_;
+    my ($class, $name, $port, $allowed_services) = @_;
     return bless({
         name => $name,
+        port => $port,
         allowed_services => $allowed_services
     }, $class);
 }
@@ -223,16 +231,25 @@ sub name {
     my $self = shift;
     return $self->{name};
 }
+sub port {
+    my $self = shift;
+    return $self->{port};
+}
 sub allowed_services {
     my $self = shift;
     return $self->{allowed_services};
+}
+sub max_queue_length {
+    my $self = shift;
+    return ($self->{max_queue_length} || 0) || 1000;
 }
 
 package OpenSRF::Utils::Conf::Domain;
 
 sub new {
-    my ($class, $private_domain, $public_domain, $hosts) = @_;
+    my ($class, $name, $private_domain, $public_domain, $hosts) = @_;
     return bless({
+        name => $name,
         private => $private_domain,
         public => $public_domain,
         hosts => $hosts
@@ -251,10 +268,7 @@ sub public {
     my $self = shift;
     return $self->{public};
 }
-sub max_queue_length {
-    my $self = shift;
-    return ($self->{max_queue_length} || 0) || 1000;
-}
+
 
 # Returns an array ref if this domain hosts a specific
 # set of services.  Returns undef otherwise.
@@ -276,7 +290,8 @@ sub new {
     die "Invalid subdomain type: $subdomain"
         unless $subdomain =~ /^(public|private)$/;
 
-    return bless({credentials => $credentials, %args}, $class);
+    return bless({
+        credentials => $credentials, subdomain => $subdomain, %args}, $class);
 }
 
 # SubDomain object 
