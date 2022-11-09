@@ -36,22 +36,27 @@ domains:
 # Muli-server / multi-brick setup
 #domains:
 #  - name: brick01.eg.example.org
-#    private: 
+#    private_node: 
 #      name: private.brick01.eg.example.org 
 #      port: 6379
-#    public: 
+#    public_node: 
 #      name: public.brick01.eg.example.org 
 #      port: 6379
 #      allowed_services: public_services
 #  - name: brick02.eg.example.org
-#    private: 
+#    private_node: 
 #      name: private.brick02.eg.example.org 
 #      port: 6379
-#    public: 
+#    public_node: 
 #      name: public.brick02.eg.example.org 
 #      port: 6379
 #      allowed_services: public_services
 
+log_defaults:
+    log_file: syslog
+    log_level: debug
+    syslog_facility: local0
+    activity_log_facility: local1
 
 # Well-known connection types, with option to define custom types
 # for use with local scripts, etc.
@@ -62,33 +67,21 @@ connections:
   service:
     node_type: private
     credentials: opensrf
-    log_file: syslog
-    log_level: trace
-    syslog_facility: local0
-    activity_log_facility: local1
   gateway:
     node_type: public
     credentials: opensrf
-    log_file: syslog
-    log_level: info
     syslog_facility: local6
-    activity_log_facility: local1
   srfsh:
     node_type: private
     credentials: opensrf
     log_file: /openils/var/log/srfsh.log
-    log_level: debug
   public_router:
     node_type: public
     credentials: opensrf
-    log_file: syslog
-    log_level: debug
     syslog_facility: local2
   private_router:
     node_type: private
     credentials: opensrf
-    log_file: syslog
-    log_level: debug
     syslog_facility: local2
 
 settings_config: /openils/conf/opensrf.xml
