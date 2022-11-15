@@ -40,9 +40,38 @@ static int add_service_groups(osrfConf* conf) {
     struct fy_node *node = fy_document_root(conf->source);
     struct fy_node *sgroups = fy_node_by_path(node, "service_groups", -1, 0);
 
-    if (sgroups == NULL) {
-        fprintf(stderr, "No 'service_groups' defined");
+    if (sgroups == NULL || !fy_node_is_mapping(sgroups)) {
+        fprintf(stderr, "Invalid 'service_groups' setting");
         return 0;
+    }
+
+    void *iter = NULL;
+    struct fy_node_pair *node_pair = NULL;
+
+    while ((node_pair = fy_node_mapping_iterate(sgroups, &iter)) != NULL) {
+        const char* key = fy_node_get_scalar0(fy_node_pair_key(node_pair));
+        struct fy_node* value = fy_node_pair_value(node_pair);
+
+        printf("Found service group: %s", key);
+
+        if (!fy_node_is_sequence(value)) {
+            fprintf(stderr, "Invalid service group list");
+            return 0;
+        }
+
+        void *iter2 = NULL;
+        struct fy_node *name_node;
+
+        while ((name_node = fy_node_sequence_iterate(value, iter2)) != NULL) {
+            if (!fy_node_is_scalar(name_node)) {
+                fprintf(stderr, "Invalid service name config");
+                return 0;
+            }
+
+            const char* name = fy_node_get_scalar0(name_node);
+
+            printf("Found service name %s", name);
+        }
     }
 
     return 1;
