@@ -14,7 +14,7 @@
 
 AM_CFLAGS = $(DEF_CFLAGS) -DASSUME_STATELESS  -DOSRF_STRICT_PARAMS -rdynamic -fno-strict-aliasing -DOSRF_JSON_ENABLE_XML_UTILS
 AM_LDFLAGS = $(DEF_LDFLAGS) -R $(libdir)
-LDADD = -lopensrf
+LDADD = -lopensrf -lfyaml
 
 DISTCLEANFILES = Makefile.in Makefile
 
@@ -26,6 +26,7 @@ TARGS = 		osrf_message.c \
 			osrf_system.c \
 			osrf_settings.c \
 			osrf_prefork.c \
+			osrf_conf.c \
 			osrfConfig.c \
 			osrf_application.c \
 			osrf_cache.c \
@@ -54,6 +55,7 @@ TARGS_HEADS = 	 $(OSRF_INC)/transport_message.h \
 		 $(OSRF_INC)/osrf_system.h \
 		 $(OSRF_INC)/osrf_settings.h \
 		 $(OSRF_INC)/osrf_prefork.h \
+		 $(OSRF_INC)/osrf_conf.h \
 		 $(OSRF_INC)/osrfConfig.h \
 		 $(OSRF_INC)/osrf_application.h \
 		 $(OSRF_INC)/osrf_cache.h \

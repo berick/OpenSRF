@@ -83,6 +83,7 @@ opensrfinclude_HEADERS = $(OSRFINC)/log.h \
 	$(OSRFINC)/osrf_big_list.h \
 	$(OSRFINC)/osrf_cache.h \
 	$(OSRFINC)/osrfConfig.h \
+	$(OSRFINC)/osrf_conf.h \
 	$(OSRFINC)/osrf_hash.h \
 	$(OSRFINC)/osrf_json.h \
 	$(OSRFINC)/osrf_json_xml.h \
