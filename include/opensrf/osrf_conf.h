@@ -100,7 +100,9 @@ osrfConf* osrfConfDefault();
 void osrfConfSetHostName(osrfConf* conf, const char* name);
 void osrfConfSetDomainName(osrfConf* conf, const char* name);
 
-int osrfConfSetPrimaryConnection(osrfConf* conf, const char* domain, const char* connection_type);
+osrfBusConnection*  osrfConfSetPrimaryConnection(osrfConf* conf, const char* domain, const char* connection_type);
+
+void osrfConfCleanup();
 
 #ifdef __cplusplus
 }

@@ -356,9 +356,9 @@ static int addServiceGroups(osrfConf* conf) {
     return 1;
 }
 
-int osrfConfSetPrimaryConnection(osrfConf* conf, const char* domain, const char* connection_type) {
+osrfBusConnection* osrfConfSetPrimaryConnection(osrfConf* conf, const char* domain, const char* connection_type) {
     // TODO
-    return 1;
+    return NULL;
 }
 
 int osrfConfHasDefaultConfig() {
@@ -367,6 +367,10 @@ int osrfConfHasDefaultConfig() {
 
 osrfConf* osrfConfDefault() {
     return _osrfConfDefault;
+}
+
+void osrfConfCleanup() {
+    // TODO
 }
 
 

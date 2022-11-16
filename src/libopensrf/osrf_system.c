@@ -222,7 +222,7 @@ int osrf_system_service_ctrl(
 
     if (!apps) {
         osrfLogInfo(OSRF_LOG_MARK, "OpenSRF-C found no apps to run");
-        osrfConfigCleanup();
+        osrfConfCleanup();
         osrf_settings_free_host_config(NULL);
     }
 
@@ -320,7 +320,7 @@ int osrf_system_service_ctrl(
 
     // main process can now go away
     osrfStringArrayFree(arr);
-    osrfConfigCleanup();
+    osrfConfCleanup();
     osrf_settings_free_host_config(NULL);
 
     return 0;
@@ -462,7 +462,7 @@ int osrf_system_shutdown( void ) {
 	if(shutdownComplete)
 		return 0;
 	else {
-		osrfConfigCleanup();
+		osrfConfCleanup();
 		osrfCacheCleanup();
 		osrf_system_disconnect_client();
 		osrf_settings_free_host_config(NULL);

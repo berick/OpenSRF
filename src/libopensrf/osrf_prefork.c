@@ -329,6 +329,9 @@ static void osrf_prefork_parse_router_chunk(
 */
 static void osrf_prefork_register_routers( const char* appname, bool unregister ) {
 
+    // TODO
+
+    /*
 	jsonObject* routerInfo = osrfConfigGetValueObject( NULL, "/routers/router" );
 
 	int i;
@@ -336,7 +339,6 @@ static void osrf_prefork_register_routers( const char* appname, bool unregister 
 		const jsonObject* routerChunk = jsonObjectGetIndex( routerInfo, i );
 
 		if( routerChunk->type == JSON_STRING ) {
-			/* this accomodates simple router configs */
 			char* routerName = osrfConfigGetValue( NULL, "/router_name" );
 			char* domain = osrfConfigGetValue( NULL, "/routers/router" );
 			osrfLogDebug( OSRF_LOG_MARK, "found simple router settings with router name %s",
@@ -351,6 +353,7 @@ static void osrf_prefork_register_routers( const char* appname, bool unregister 
 	}
 
 	jsonObjectFree( routerInfo );
+    */
 }
 
 /**
@@ -753,6 +756,9 @@ static void sighup_handler(int sig) {
     if (!global_forker) return;
     osrfLogInfo(OSRF_LOG_MARK, "server: received SIGHUP, reloading config");
 
+    // TODO
+
+    /*
     osrfConfig* oldConfig = osrfConfigGetDefaultConfig();
     osrfConfig* newConfig = osrfConfigInit(
         oldConfig->configFileName, oldConfig->configContext);
@@ -771,6 +777,7 @@ static void sighup_handler(int sig) {
         int level = atoi(log_level);
         osrfLogSetLevel(level);
     }
+    */
 
     // Copy the list of active children into the sighup_pending list.
     // Cloning is necessary, since the nodes in the active list, particularly
