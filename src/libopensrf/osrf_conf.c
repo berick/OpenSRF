@@ -9,6 +9,7 @@ static osrfBusNode* extractBusNode(osrfConf*, struct fy_node* node, char* name);
 static int addLogDefaults(osrfConf*);
 static int addConnectionTypes(osrfConf*);
 static char* getString(struct fy_node*, const char* path);
+static osrfLogOptions* buildLogOps(osrfConf*, struct fy_node*);
 
 osrfConf* osrfConfInit(const char* filename, const char* connection_type) {
 
@@ -33,8 +34,9 @@ osrfConf* osrfConfInit(const char* filename, const char* connection_type) {
     conf->source = fyd;
 
     if (!setHostInfo(conf)      ||
-        !addServiceGroups(conf) ||
         !addLogDefaults(conf)   ||
+        !addCredentials(conf)   ||
+        !addServiceGroups(conf) ||
         !addDomains(conf)       ||
         !addConnectionTypes(conf)) {
 
@@ -50,7 +52,11 @@ osrfConf* osrfConfInit(const char* filename, const char* connection_type) {
 
 static char* getString(struct fy_node* node, const char* path) {
     char buf[1024 + 1];
-    int count = fy_node_scanf(node, "%s %1024s", buf, path);
+
+    char pathbuf[1024 + 1];
+    snprintf(pathbuf, 1024, "%s %%1024s", path);
+
+    int count = fy_node_scanf(node, pathbuf, buf);
 
     if (count == 0) {
         fprintf(stderr, "Invalid username");
@@ -60,6 +66,64 @@ static char* getString(struct fy_node* node, const char* path) {
     return strdup(buf);
 }
 
+static int addLogDefaults(osrfConf* conf) {
+
+    struct fy_node *node = fy_document_root(conf->source);
+    node = fy_node_by_path(node, "log_defaults", -1, 0);
+
+    if (node == NULL) { // Optional
+        return 1;
+    }
+
+    osrfLogOptions* ops = (osrfLogOptions*) safe_malloc(sizeof(osrfLogOptions));
+
+    // NULL's are OK for values here.
+    ops->log_file = getString(node, "/log_file");
+    ops->syslog_facility = getString(node, "/syslog_facility");
+    ops->activity_log_facility = getString(node, "/activity_log_facility");
+
+    char* log_level_str = getString(node, "/log_level");
+    if (log_level_str) {
+        ops->log_level = atoi(log_level_str);
+        free(log_level_str);
+    }
+
+    conf->log_defaults = ops;
+
+    return 1;
+}
+
+static osrfLogOptions* buildLogOps(osrfConf* conf, struct fy_node* node) {
+     osrfLogOptions* ops = (osrfLogOptions*) safe_malloc(sizeof(osrfLogOptions));
+
+    ops->log_file = getString(node, "/log_file");
+    ops->syslog_facility = getString(node, "/syslog_facility");
+    ops->activity_log_facility = getString(node, "/activity_log_facility");
+
+    char* log_level_str = getString(node, "/log_level");
+    if (log_level_str) {
+        ops->log_level = atoi(log_level_str);
+        free(log_level_str);
+    }
+
+    // Do we have any defaults to apply?
+    if (conf->log_defaults == NULL) { return ops; }
+
+    if (ops->log_file == NULL && conf->log_defaults->log_file != NULL) {
+        ops->log_file = strdup(conf->log_defaults->log_file);
+    }
+    if (ops->log_level == 0 && conf->log_defaults->log_level != 0) {
+        ops->log_level = conf->log_defaults->log_level;
+    }
+    if (ops->syslog_facility == NULL && conf->log_defaults->syslog_facility != NULL) {
+        ops->syslog_facility = strdup(conf->log_defaults->syslog_facility);
+    }
+    if (ops->activity_log_facility == NULL && conf->log_defaults->activity_log_facility != NULL) {
+        ops->activity_log_facility = strdup(conf->log_defaults->activity_log_facility);
+    }
+
+    return ops;
+}
 
 static int addDomains(osrfConf* conf) {
 
@@ -76,6 +140,7 @@ static int addDomains(osrfConf* conf) {
 
     while ((domain_entry = fy_node_sequence_iterate(domain_list, &iter)) != NULL) {
         osrfBusDomain* domain = (osrfBusDomain*) safe_malloc(sizeof(osrfBusDomain));
+
         domain->name = getString(domain_entry, "/name");
         domain->private_node = extractBusNode(conf, domain_entry, "private_node");
         domain->public_node = extractBusNode(conf, domain_entry, "public_node");
@@ -124,11 +189,6 @@ static osrfBusNode* extractBusNode(osrfConf* conf, struct fy_node* node, char* n
     free(svcgname);
     return bus_node;
  }
-
-static int addLogDefaults(osrfConf* conf) {
-    // TODO
-    return 1;
-}
 
 
 // This does not guarantee values will be set, since the caller
@@ -213,9 +273,7 @@ static int addConnectionTypes(osrfConf* conf) {
         }
 
         contype->credentials = creds;
-
-        // TODO logging
-        //osrfLogOptions* logging;
+        contype->logging = buildLogOps(conf, value);
 
         osrfHashSet(conf->connection_types, contype, name);
     }
