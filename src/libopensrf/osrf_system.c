@@ -75,8 +75,8 @@ void osrfSystemIgnoreTransportClient() {
 	A thin wrapper for osrfSystemBootstrapClientResc, passing it NULL for a resource.
 */
 
-int osrf_system_bootstrap_client(const char* config_file, const char* connection_type) {
-    return osrf_system_bootstrap_common(config_file, connection_type, "client", 0);
+int osrf_system_bootstrap_client(const char* domain, const char* config_file, const char* connection_type) {
+    return osrf_system_bootstrap_common(domain, config_file, connection_type, "client", 0);
 }
 
 /**
@@ -181,12 +181,13 @@ static int stop_service(const char* piddir, const char* service) {
 
 // if service is null, all services are started
 int osrf_system_service_ctrl(  
-        const char* hostname, const char* config, 
+        const char* hostname, const char* domain,
+		const char* config, 
         const char* context, const char* piddir, 
         const char* action, const char* service) {
     
     // Load the conguration, open the log, open a connection to Jabber
-    if (!osrf_system_bootstrap_common(config, context, "client", 0)) {
+    if (!osrf_system_bootstrap_common(domain, config, context, "client", 0)) {
         osrfLogError(OSRF_LOG_MARK,
             "Unable to bootstrap for host %s from configuration file %s",
             hostname, config);
@@ -205,22 +206,6 @@ int osrf_system_service_ctrl(
             "Unable to retrieve settings from settings server, retrying..");
         sleep(1);
     }
-
-    // -=--------
-    osrfLogInfo(OSRF_LOG_MARK, "Global client domain %s", osrfGlobalTransportClient->primary_domain);
-    osrfLogInfo(OSRF_LOG_MARK, "Global client connection count: %d", osrfHashGetCount(osrfGlobalTransportClient->connections));
-
-    osrfHashIterator* iter = osrfNewHashIterator(osrfGlobalTransportClient->connections);
-
-    transport_con* con;
-
-    while( (con = (transport_con*) osrfHashIteratorNext(iter)) ) {
-        osrfLogInfo(OSRF_LOG_MARK, "DOMAIN: %s", con->domain);
-    }
-
-    osrfHashIteratorFree(iter);
-    // -=--------
-
 
     // all done talking to the network
     osrf_system_disconnect_client();
@@ -353,152 +338,102 @@ int osrf_system_service_ctrl(
 	- Open the log.
 	- Open a connection to Jabber.
 */
-int osrfSystemBootstrapClientResc(const char* config_file,
+int osrfSystemBootstrapClientResc(const char* domain, const char* config_file,
     const char* connection_type, const char* appname) {
-    return osrf_system_bootstrap_common(config_file, connection_type, appname, 0);
+    return osrf_system_bootstrap_common(domain, config_file, connection_type, appname, 0);
 }
 
-int osrf_system_bootstrap_common(const char* config_file,
-		const char* connection_type, const char* appname, int is_service) {
+int osrf_system_bootstrap_common(const char* domain, const char* config_file,
+        const char* connection_type, const char* appname, int is_service) {
 
-    if (connection_type == NULL) {
-        osrfLogError(OSRF_LOG_MARK,
-            "osrf_system_bootstrap_common() requires a connection type");
-        return -1;
+	osrfConf* conf = osrfConfDefault();
+
+    if (osrfSystemGetTransportClient()) {
+        osrfLogInfo(OSRF_LOG_MARK, "Client is already bootstrapped");
+        return 1; /* we already have a client connection */
     }
 
-	int failure = 0;
-
-	if(osrfSystemGetTransportClient()) {
-		osrfLogInfo(OSRF_LOG_MARK, "Client is already bootstrapped");
-		return 1; /* we already have a client connection */
+	char* domain_free = NULL;
+	if (domain == NULL) {
+		if (conf == NULL) {
+			domain = domain_free = getDomainName();
+		} else {
+			domain = conf->primary_connection->domain_name;
+		}
 	}
 
-	if( !( config_file && connection_type ) && ! osrfConfigHasDefaultConfig() ) {
-		osrfLogError( OSRF_LOG_MARK, "No Config File Specified\n" );
-		return -1;
-	}
+    if (config_file && connection_type) {
+        conf = osrfConfInit(config_file, connection_type);
 
-	if( config_file ) {
-		osrfConfig* cfg = osrfConfigInit(config_file, NULL);
-		if(cfg)
-			osrfConfigSetDefaultConfig(cfg);
-		else
-			return 0;   /* Can't load configuration?  Bail out */
+        if (!conf) {
+            fprintf(stderr, "Cannot process config file %s", config_file);
+            return 0;
+        }
 
-		// fetch list of configured log redaction marker strings
-		log_protect_arr = osrfNewStringArray(8);
-		osrfConfigGetValueList(cfg, log_protect_arr, "/config/log_protect/match_string" );
-	}
+        log_protect_arr = conf->log_protect;
 
-	char* log_file = osrfConfigGetValue(NULL, "/config/connections/%s/logfile", connection_type);
-	if (!log_file) {
-		fprintf(stderr, "No log file specified in configuration file %s\n",
-				config_file);
-		return -1;
-	}
+    } else if (!conf) {
+        osrfLogError(OSRF_LOG_MARK, "No Config File / Connection Type Specified\n");
+        return 0;
+    }
 
-	char* log_level = osrfConfigGetValue(NULL, "/config/connections/%s/loglevel", connection_type);
-	char* username  = osrfConfigGetValue(NULL, "/config/connections/%s/message_bus/username", connection_type);
-	char* password  = osrfConfigGetValue(NULL, "/config/connections/%s/message_bus/password", connection_type);
-	char* domain    = osrfConfigGetValue(NULL, "/config/connections/%s/message_bus/domain", connection_type);
-	char* port      = osrfConfigGetValue(NULL, "/config/connections/%s/message_bus/port", connection_type);
-	char* facility  = osrfConfigGetValue(NULL, "/config/connections/%s/syslog", connection_type);
-	char* actlog    = osrfConfigGetValue(NULL, "/config/connections/%s/actlog", connection_type);
-	char* logtag    = osrfConfigGetValue(NULL, "/config/connections/%s/logtag", connection_type);
+    osrfBusConnection* primary = osrfConfSetPrimaryConnection(conf, domain, connection_type);
 
-	/* if we're a source-client, tell the logger */
-	char* isclient = osrfConfigGetValue(NULL, "/config/connections/%s/client", connection_type);
-	if( isclient && !strcasecmp(isclient,"true") )
-		osrfLogSetIsClient(1);
-	free(isclient);
+    if (primary == NULL) {
+        osrfLogError(
+            OSRF_LOG_MARK, 
+            "Failed setting primary connection type domain=%s type=%s", 
+            domain, connection_type
+        );
 
-	int llevel = 0;
-	int iport = 0;
-	if (port) iport = atoi(port);
-	if (log_level) llevel = atoi(log_level);
+        return 0;
+    }
 
-	if(!strcmp(log_file, "syslog")) {
-		if(logtag) osrfLogSetLogTag(logtag);
-		osrfLogInit( OSRF_LOG_TYPE_SYSLOG, appname, llevel );
-		osrfLogSetSyslogFacility(osrfLogFacilityToInt(facility));
-		if(actlog) osrfLogSetSyslogActFacility(osrfLogFacilityToInt(actlog));
+    const char* log_file = primary->connection_type->logging->log_file;
+    const char* facility = primary->connection_type->logging->syslog_facility;
+    const char* actlog = primary->connection_type->logging->activity_log_facility;
+    const char* logtag = primary->connection_type->logging->log_tag;
+    const char* username = primary->connection_type->credentials->username;
+    const char* password = primary->connection_type->credentials->password;
+    const char* node_name = primary->node_name;
+    int log_level = primary->connection_type->logging->log_level;
+    int port = primary->port;
 
-	} else {
-		osrfLogInit( OSRF_LOG_TYPE_FILE, appname, llevel );
-		osrfLogSetFile( log_file );
-	}
+    if (!strcmp(log_file, "syslog")) {
+        if (logtag) osrfLogSetLogTag(logtag);
+        osrfLogInit( OSRF_LOG_TYPE_SYSLOG, appname, log_level );
+        osrfLogSetSyslogFacility(osrfLogFacilityToInt(facility));
+        if (actlog) osrfLogSetSyslogActFacility(osrfLogFacilityToInt(actlog));
 
-	if(!username) {
-		fprintf(stderr, "No username specified in configuration file %s\n", config_file);
-		osrfLogError( OSRF_LOG_MARK, "No username specified in configuration file %s\n",
-				config_file );
-		failure = 1;
-	}
+    } else {
+        osrfLogInit( OSRF_LOG_TYPE_FILE, appname, log_level );
+        osrfLogSetFile( log_file );
+    }
 
-	if(!password) {
-		fprintf(stderr, "No password specified in configuration file %s\n", config_file);
-		osrfLogError( OSRF_LOG_MARK, "No password specified in configuration file %s\n",
-				config_file);
-		failure = 1;
-	}
+    osrfLogInfo(OSRF_LOG_MARK, 
+        "Bootstrapping system with node_name %s, port %d", node_name, port);
 
-	if (failure) {
-		free(log_file);
-		free(log_level);
-		free(username);
-		free(password);
-		free(port);
-		free(domain);
-		free(facility);
-		free(actlog);
-		free(logtag);
-		return 0;
-	}
-
-	osrfLogInfo(OSRF_LOG_MARK, 
-        "Bootstrapping system with domain %s, port %d", domain, iport);
-
-	transport_client* client = client_init(domain, iport, username, password);
+    transport_client* client = client_init(node_name, port, username, password);
 
     if (is_service) {
-	    if (client_connect_as_service(client, appname)) {
-		    osrfGlobalTransportClient = client;
-	    }
+        if (client_connect_as_service(client, appname)) {
+            osrfGlobalTransportClient = client;
+        }
     } else {
-	    if (client_connect(client)) {
-		    osrfGlobalTransportClient = client;
-	    }
+        if (client_connect(client)) {
+            osrfLogSetIsClient(1);
+            osrfGlobalTransportClient = client;
+        }
     }
 
-	free(actlog);
-	free(facility);
-	free(log_level);
-	free(log_file);
-	free(username);
-	free(password);
-	free(port);
-	free(domain);
+	if (domain_free != NULL) {
+		free(domain_free);
+	}
 
-    // TODO
-    osrfHashIterator* iter = osrfNewHashIterator(osrfGlobalTransportClient->connections);
+    if (osrfGlobalTransportClient)
+        return 1;
 
-    osrfLogInfo(OSRF_LOG_MARK, "PRIMARY DOMAIN: %s", osrfGlobalTransportClient->primary_connection->domain);
-
-    transport_con* con;
-
-    while( (con = (transport_con*) osrfHashIteratorNext(iter)) ) {
-        osrfLogInfo(OSRF_LOG_MARK, "DOMAIN: %s", con->domain);
-    }
-
-    osrfHashIteratorFree(iter);
-    // TODO
-
-
-	if(osrfGlobalTransportClient)
-		return 1;
-
-	return 0;
+    return 0;
 }
 
 /**

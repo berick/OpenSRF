@@ -267,9 +267,33 @@ static void child_init(int argc, char* argv[]) {
         config_file = argv[1];
     }
 
-    if (!osrf_system_bootstrap_common(config_file, config_ctxt, "websocket", 0) ) {
+    char* domain = NULL;
+    char* domain_free = NULL;
+    if (argc > 3) {
+        const char* flag = argv[2];
+        if (strcmp(flag, "--localhost") == 0) {
+            domain = "localhost";
+        } else if (strcmp(flag, "--domain")) {
+            domain = argv[3];
+        }
+    }
+
+    if (domain == NULL) {
+        domain = domain_free = getDomainName();
+    }
+
+    if (domain == NULL) {
+        fprintf(stderr, "Websockets needs a runtime domain!");
+        return;
+    }
+
+    if (!osrf_system_bootstrap_common(domain, config_file, config_ctxt, "websocket", 0) ) {
         fprintf(stderr, "Cannot boostrap OSRF\n");
         shut_it_down(1);
+    }
+
+    if (domain_free != NULL) {
+        free(domain_free);
     }
 
     osrf_handle = osrfSystemGetTransportClient();

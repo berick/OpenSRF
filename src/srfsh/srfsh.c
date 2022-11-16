@@ -110,25 +110,30 @@ int main( int argc, char* argv[] ) {
 	char fbuf[l];
 	snprintf(fbuf, sizeof(fbuf), "%s/.srfsh.xml", home);
 	
-	if(!access(fbuf, R_OK)) {
-		if( ! osrf_system_bootstrap_common(fbuf, "srfsh", "srfsh", 0) ) {
-			fprintf(stderr,"Unable to bootstrap client for requests\n");
-			osrfLogError( OSRF_LOG_MARK,  "Unable to bootstrap client for requests");
-			return -1;
-		}
+    char* domain = NULL;
 
-	} else {
-		fprintf(stderr,"No Config file found at %s\n", fbuf ); 
-		return -1;
-	}
-
-	if(argc > 1) {
+	if (argc > 1) {
 		int f;
 		int i;
 		for (i = 1; i < argc; i++) {
 
 			if( !strcmp( argv[i], "--safe" ) ) {
 				no_bang = 1;
+				continue;
+			}
+
+			if (!strcmp(argv[i], "--localhost")) {
+                domain = "localhost";
+				continue;
+			}
+
+			if (!strcmp(argv[i], "--domain")) {
+                i++;
+                if (argc > i) {
+                    domain = argv[i];
+                } else {
+                    fprintf(stderr, "--domain flag requires a value");
+                }
 				continue;
 			}
 
@@ -149,6 +154,31 @@ int main( int argc, char* argv[] ) {
 			is_from_script = 1;
 		}
 	}
+
+    char* domain_free = NULL;
+    if (domain == NULL) {
+        domain = domain_free = getDomainName();
+        if (domain == NULL) {
+            fprintf(stderr, "Domain requried.  use --localhost or --domain <domain>");
+            return -1;
+        }
+    }
+
+	if (!access(fbuf, R_OK)) {
+		if (!osrf_system_bootstrap_common(domain, fbuf, "srfsh", "srfsh", 0)) {
+			fprintf(stderr,"Unable to bootstrap client for requests\n");
+			osrfLogError( OSRF_LOG_MARK,  "Unable to bootstrap client for requests");
+			return -1;
+		}
+
+	} else {
+		fprintf(stderr,"No Config file found at %s\n", fbuf ); 
+		return -1;
+	}
+
+    if (domain_free != NULL) {
+        free(domain_free);
+    }
 
 	// if stdin is not a tty, assume that we're running
 	// a script and don't want to record history

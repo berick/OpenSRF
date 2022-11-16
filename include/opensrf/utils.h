@@ -383,6 +383,18 @@ int osrfUtilsCheckFileDescriptor( int fd );
 */
 size_t osrfXmlEscapingLength ( const char* str );
 
+/*
+ * Returns the host name as a string.
+ * Caller is responsible for freeing the value.
+ */
+char* getHostName();
+
+/*
+ * Returns domain name sring.
+ * Caller is responsible for freeing the value.
+ */
+char* getDomainName();
+
 #ifdef __cplusplus
 }
 #endif

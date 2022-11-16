@@ -25,7 +25,7 @@ typedef struct {
 
 typedef struct {
     char* name;
-    unsigned int port;
+    int port;
     osrfStringArray* allowed_services;
 } osrfBusNode;
 
@@ -40,17 +40,18 @@ typedef struct {
     char* log_file;
     char* syslog_facility;
     char* activity_log_facility;
+    char* log_tag;
 } osrfLogOptions;
 
 typedef struct {
     osrfBusNodeType node_type;
-    osrfBusCredentials* BusCredentials;
+    osrfBusCredentials* credentials;
     osrfLogOptions* logging;
 
 } osrfBusConnectionType;
 
 typedef struct {
-    unsigned int port;
+    int port;
     char* domain_name;
     char* node_name;
     osrfBusConnectionType* connection_type;
@@ -59,10 +60,14 @@ typedef struct {
 typedef struct {
 
     // Our runtime hostname.
+    // For services, this determines which services we host and their settings.
     char* hostname;
 
+    // Our primary domain.
+    char* domain;
+
     // Hash of connection name to connection type.
-    osrfHash* connections;
+    osrfHash* connection_types;
 
     // Hash of name to osrfBusCredentials
     osrfHash* credentials;
@@ -87,6 +92,15 @@ typedef struct {
 } osrfConf;
 
 osrfConf* osrfConfInit(const char* filename, const char* connection_type);
+
+int osrfConfHasDefaultConfig();
+
+osrfConf* osrfConfDefault();
+
+void osrfConfSetHostName(osrfConf* conf, const char* name);
+void osrfConfSetDomainName(osrfConf* conf, const char* name);
+
+int osrfConfSetPrimaryConnection(osrfConf* conf, const char* domain, const char* connection_type);
 
 #ifdef __cplusplus
 }

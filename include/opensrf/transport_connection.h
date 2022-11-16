@@ -19,7 +19,7 @@ extern "C" {
 
 struct transport_con_struct {
     char* address;
-    char* domain;
+    char* node_name;
     int max_queue;
     redisContext* bus;
 };
@@ -31,7 +31,7 @@ struct transport_con_msg_struct {
 };
 typedef struct transport_con_msg_struct transport_con_msg;
 
-transport_con* transport_con_new(const char* domain);
+transport_con* transport_con_new(const char* node_name);
 
 void transport_con_free(transport_con* con);
 void transport_con_msg_free(transport_con_msg* msg);

@@ -24,6 +24,9 @@ GNU General Public License for more details.
 #include <opensrf/utils.h>
 #include <opensrf/log.h>
 #include <errno.h>
+#include <string.h>
+#include <netdb.h>
+#include <unistd.h>
 
 /**
 	@brief A thin wrapper for malloc().
@@ -803,5 +806,42 @@ size_t osrfXmlEscapingLength ( const char* str ) {
 	}
 
 	return extra;
+}
+
+
+char* getHostName() {
+    char hostname[1024 + 1];
+    hostname[1024] = '\0';
+    if (gethostname(hostname, 1024) != 0) {
+        fprintf(stderr, "Cannot determine hostname");
+        return NULL;
+    }
+    return strdup(hostname);
+}
+
+
+char* getDomainName() {
+
+    char buf[1024 + 1];
+    if (getdomainname(buf, 1024) == 0) {
+        return strdup(buf);
+    }
+
+    // getdomainname() only pulls from some sources.
+    // If it fails, try other options.
+
+    struct hostent *host;
+    if (gethostname(buf, 1024) == 0) {
+        host = gethostbyname(buf);
+        if (host != NULL) {
+            char* domain = strchr(host->h_name, '.');
+            if (domain != NULL && strlen(domain) > 1) {
+                domain++; // skip the first "."
+                return strdup(domain);
+            }
+        }
+    }
+
+    return NULL;
 }
 

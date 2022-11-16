@@ -1,18 +1,18 @@
 #include <opensrf/transport_connection.h>
 
-transport_con* transport_con_new(const char* domain) {
+transport_con* transport_con_new(const char* node_name) {
 
-    osrfLogInternal(OSRF_LOG_MARK, "TCON transport_con_new() domain=%s", domain);
+    osrfLogInternal(OSRF_LOG_MARK, "TCON transport_con_new() node_name=%s", node_name);
 
     transport_con* con = safe_malloc(sizeof(transport_con));
 
     con->bus = NULL;
     con->address = NULL;
-    con->domain = strdup(domain);
+    con->node_name = strdup(node_name);
     con->max_queue = 1000; // TODO pull from config
 
     osrfLogInternal(OSRF_LOG_MARK, 
-        "TCON created transport connection with domain: %s", con->domain);
+        "TCON created transport connection with node_name: %s", con->node_name);
 
     return con;
 }
@@ -32,11 +32,11 @@ void transport_con_free(transport_con* con) {
     osrfLogInternal(OSRF_LOG_MARK, "TCON transport_con_free()");
 
     osrfLogInternal(
-        OSRF_LOG_MARK, "Freeing transport connection for %s", con->domain);
+        OSRF_LOG_MARK, "Freeing transport connection for %s", con->node_name);
 
     if (con->bus) { free(con->bus); }
     if (con->address) { free(con->address); }
-    if (con->domain) { free(con->domain); }
+    if (con->node_name) { free(con->node_name); }
 
     free(con);
 }
@@ -53,7 +53,7 @@ void transport_con_set_address(transport_con* con, const char* service) {
     gethostname(hostname, 1023);
 
     growing_buffer *buf = buffer_init(64);
-    buffer_fadd(buf, "opensrf:client:%s:%s:", con->domain, hostname);
+    buffer_fadd(buf, "opensrf:client:%s:%s:", con->node_name, hostname);
 
     if (service != NULL) {
         buffer_fadd(buf, "%s:", service);
@@ -80,14 +80,14 @@ int transport_con_connect(
     osrfLogInternal(OSRF_LOG_MARK, "TCON transport_con_connect()");
 
     osrfLogDebug(OSRF_LOG_MARK, "Transport con connecting with bus "
-        "domain=%s; address=%s; port=%d; username=%s", 
-        con->domain,
+        "node_name=%s; address=%s; port=%d; username=%s", 
+        con->node_name,
         con->address,
         port, 
         username
     );
 
-    con->bus = redisConnect(con->domain, port);
+    con->bus = redisConnect(con->node_name, port);
 
     if (con->bus == NULL) {
         osrfLogError(OSRF_LOG_MARK, "Could not connect to Redis instance");

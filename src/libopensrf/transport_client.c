@@ -1,13 +1,13 @@
 #include <opensrf/transport_client.h>
 
-transport_client* client_init(const char* domain, 
+transport_client* client_init(const char* node_name, 
     int port, const char* username, const char* password) {
 
     osrfLogInfo(OSRF_LOG_MARK, 
-        "TCLIENT client_init domain=%s port=%d username=%s", domain, port, username);
+        "TCLIENT client_init node_name=%s port=%d username=%s", node_name, port, username);
 
 	transport_client* client = safe_malloc(sizeof(transport_client));
-    client->primary_domain = strdup(domain);
+    client->primary_node_name = strdup(node_name);
     client->connections = osrfNewHash();
 
     // These 2 only get values if this client works for a service.
@@ -26,33 +26,33 @@ transport_client* client_init(const char* domain,
 }
 
 static transport_con* client_connect_common(
-    transport_client* client, const char* domain) {
+    transport_client* client, const char* node_name) {
 
-    osrfLogInfo(OSRF_LOG_MARK, "TCLIENT Connecting to domain: %s", domain);
+    osrfLogInfo(OSRF_LOG_MARK, "TCLIENT Connecting to node_name: %s", node_name);
 
-    transport_con* con = transport_con_new(domain);
+    transport_con* con = transport_con_new(node_name);
 
-    osrfHashSet(client->connections, (void*) con, (char*) domain);
+    osrfHashSet(client->connections, (void*) con, (char*) node_name);
 
     return con;
 }
 
 
-static transport_con* get_transport_con(transport_client* client, const char* domain) {
-    osrfLogInternal(OSRF_LOG_MARK, "TCLIENT get_transport_con() domain=%s", domain);
+static transport_con* get_transport_con(transport_client* client, const char* node_name) {
+    osrfLogInternal(OSRF_LOG_MARK, "TCLIENT get_transport_con() node_name=%s", node_name);
 
-    transport_con* con = (transport_con*) osrfHashGet(client->connections, (char*) domain);
+    transport_con* con = (transport_con*) osrfHashGet(client->connections, (char*) node_name);
 
     if (con != NULL) { return con; }
 
-    // If we don't have the a connection for the requested domain,
-    // it means we're setting up a connection to a remote domain.
+    // If we don't have the a connection for the requested node_name,
+    // it means we're setting up a connection to a remote node_name.
 
-    con = client_connect_common(client, domain);
+    con = client_connect_common(client, node_name);
 
     transport_con_set_address(con, NULL);
 
-    // Connections to remote domains assume the same connection
+    // Connections to remote node_names assume the same connection
     // attributes apply.
     transport_con_connect(con, client->port, client->username, client->password);
 
@@ -70,7 +70,7 @@ int client_connect_as_service(transport_client* client, const char* service) {
     client->service_address = buffer_release(buf);
     client->service = strdup(service);
 
-    transport_con* con = client_connect_common(client, client->primary_domain);
+    transport_con* con = client_connect_common(client, client->primary_node_name);
 
     transport_con_set_address(con, service);
 
@@ -86,7 +86,7 @@ int client_connect_as_service(transport_client* client, const char* service) {
 int client_connect(transport_client* client) {
     osrfLogInternal(OSRF_LOG_MARK, "TCLIENT client_connect()");
 
-    transport_con* con = client_connect_common(client, client->primary_domain);
+    transport_con* con = client_connect_common(client, client->primary_node_name);
 
     transport_con_set_address(con, NULL);
 
@@ -106,7 +106,7 @@ int client_disconnect(transport_client* client) {
     transport_con* con;
 
     while( (con = (transport_con*) osrfHashIteratorNext(iter)) ) {
-        osrfLogInternal(OSRF_LOG_MARK, "TCLIENT Disconnecting from domain: %s", con->domain);
+        osrfLogInternal(OSRF_LOG_MARK, "TCLIENT Disconnecting from node_name: %s", con->node_name);
         transport_con_disconnect(con);
         transport_con_free(con);
     }
@@ -123,25 +123,25 @@ int client_connected( const transport_client* client ) {
 	return (client != NULL && client->primary_connection != NULL);
 }
 
-static char* get_domain_from_address(const char* address) {
+static char* get_node_name_from_address(const char* address) {
     osrfLogInternal(OSRF_LOG_MARK, 
-        "TCLIENT get_domain_from_address() address=%s", address);
+        "TCLIENT get_node_name_from_address() address=%s", address);
 
     char* addr_copy = strdup(address);
     strtok(addr_copy, ":"); // "opensrf:"
     strtok(NULL, ":"); // "client:"
-    char* domain = strtok(NULL, ":");
+    char* node_name = strtok(NULL, ":");
 
-    if (domain) {
+    if (node_name) {
         // About to free addr_copy...
-        domain = strdup(domain);
+        node_name = strdup(node_name);
     } else {
-        osrfLogError(OSRF_LOG_MARK, "No domain parsed from address: %s", address);
+        osrfLogError(OSRF_LOG_MARK, "No node_name parsed from address: %s", address);
     }
 
     free(addr_copy);
 
-    return domain;
+    return node_name;
 }
 
 int client_send_message(transport_client* client, transport_message* msg) {
@@ -152,18 +152,18 @@ int client_send_message(transport_client* client, transport_message* msg) {
     transport_con* con;
 
     if (strstr(msg->recipient, "opensrf:client")) {
-        // We may be talking to a worker that runs on a remote domain.
-        // Find or create a connection to the domain.
+        // We may be talking to a worker that runs on a remote node_name.
+        // Find or create a connection to the node_name.
 
-        char* domain = get_domain_from_address(msg->recipient);
+        char* node_name = get_node_name_from_address(msg->recipient);
 
-        if (!domain) { return -1; }
+        if (!node_name) { return -1; }
 
-        con = get_transport_con(client, domain);
+        con = get_transport_con(client, node_name);
 
         if (!con) {
             osrfLogError(
-                OSRF_LOG_MARK, "Error creating connection for domain: %s", domain);
+                OSRF_LOG_MARK, "Error creating connection for node_name: %s", node_name);
 
             return -1;
         }
@@ -245,9 +245,9 @@ int client_discard( transport_client* client ) {
 	if (client == NULL) { return 0; }
 
     osrfLogInternal(OSRF_LOG_MARK, 
-        "Discarding client on domain %s", client->primary_domain);
+        "Discarding client on node_name %s", client->primary_node_name);
 
-	if (client->primary_domain) { free(client->primary_domain); }
+	if (client->primary_node_name) { free(client->primary_node_name); }
 	if (client->service) { free(client->service); }
 	if (client->service_address) { free(client->service_address); }
     if (client->username) { free(client->username); }
@@ -264,7 +264,7 @@ int client_discard( transport_client* client ) {
 
     while( (con = (transport_con*) osrfHashIteratorNext(iter)) ) {
         osrfLogInternal(OSRF_LOG_MARK, 
-            "client_discard() freeing connection for %s", con->domain);
+            "client_discard() freeing connection for %s", con->node_name);
         transport_con_free(con);
     }
 

@@ -1,7 +1,9 @@
 #include <opensrf/osrf_conf.h>
 
-static osrfConf* osrfConfDefault = NULL;
-static int add_service_groups(osrfConf*);
+static osrfConf* _osrfConfDefault = NULL;
+static int setHostInfo(osrfConf*);
+static int addServiceGroups(osrfConf*);
+static int addConnectionTypes(osrfConf*);
 
 osrfConf* osrfConfInit(const char* filename, const char* connection_type) {
 
@@ -12,13 +14,11 @@ osrfConf* osrfConfInit(const char* filename, const char* connection_type) {
         return NULL;
     }
 
-    char hostname[1024 + 1];
-    hostname[1024] = '\0';
-    gethostname(hostname, 1024);
-
     osrfConf* conf = (osrfConf*) safe_malloc(sizeof(osrfConf));
-    conf->hostname = strdup(hostname);
-    conf->connections = osrfNewHash();
+
+    conf->hostname = NULL;
+    conf->domain = NULL;
+    conf->connection_types = osrfNewHash();
     conf->credentials = osrfNewHash();
     conf->domains = osrfNewList();
     conf->service_groups = osrfNewHash();
@@ -27,15 +27,91 @@ osrfConf* osrfConfInit(const char* filename, const char* connection_type) {
     conf->primary_connection = NULL;
     conf->source = fyd;
 
-    if (!add_service_groups(conf)) { return NULL; }
+    if (!setHostInfo(conf)) { return NULL; }
+    if (!addServiceGroups(conf)) { return NULL; }
+    if (!addConnectionTypes(conf)) { return NULL; }
 
-
-    osrfConfDefault = conf;
+    _osrfConfDefault = conf;
 
     return conf;
 }
 
-static int add_service_groups(osrfConf* conf) {
+
+// This does not guarantee values will be set, since the caller
+// has the option to manually apply values after we have init'ed.
+static int setHostInfo(osrfConf* conf) {
+
+    char text[256 + 1];
+    int count = fy_document_scanf(conf->source, "/hostname %256s", text);
+    if (count > 0) {
+        conf->hostname = strdup(text);
+    } else {
+        conf->hostname = getHostName();
+    }
+
+    count = fy_document_scanf(conf->source, "/domain %256s", text);
+    if (count > 0) {
+        conf->domain = strdup(text);
+    } else {
+        conf->domain = getDomainName();
+    }
+
+    return 1;
+}
+
+void osrfConfSetHostName(osrfConf* conf, const char* name) {
+    if (name == NULL) { 
+        fprintf(stderr, "Attempt to set hostname to NULL");
+        return; 
+    }
+
+    if (conf->hostname) {
+        free(conf->hostname);
+    }
+
+    conf->hostname = strdup(name);
+}
+
+void osrfConfSetDomainName(osrfConf* conf, const char* name) {
+    if (name == NULL) { 
+        fprintf(stderr, "Attempt to set domain to NULL");
+        return; 
+    }
+
+    if (conf->domain) {
+        free(conf->domain);
+    }
+
+    conf->domain = strdup(name);
+}
+
+static int addConnectionTypess(osrfConf* conf) {
+
+    struct fy_node *node = fy_document_root(conf->source);
+    struct fy_node *connections = fy_node_by_path(node, "connections", -1, 0);
+
+    if (connections == NULL || !fy_node_is_mapping(connections)) {
+        fprintf(stderr, "Invalid 'service_groups' setting");
+        return 0;
+    }
+
+    void *iter = NULL;
+    struct fy_node_pair *node_pair = NULL;
+
+    while ((node_pair = fy_node_mapping_iterate(connections, &iter)) != NULL) {
+        const char* key = fy_node_get_scalar0(fy_node_pair_key(node_pair));
+        struct fy_node* value = fy_node_pair_value(node_pair);
+
+        if (!fy_node_is_mapping(value)) {
+            fprintf(stderr, "Invalid connections");
+            return 0;
+        }
+
+        // TODO 
+    }
+}
+
+static int addServiceGroups(osrfConf* conf) {
 
     struct fy_node *node = fy_document_root(conf->source);
     struct fy_node *sgroups = fy_node_by_path(node, "service_groups", -1, 0);
@@ -75,6 +151,19 @@ static int add_service_groups(osrfConf* conf) {
     }
 
     return 1;
+}
+
+int osrfConfSetPrimaryConnection(osrfConf* conf, const char* domain, const char* connection_type) {
+    // TODO
+    return 1;
+}
+
+int osrfConfHasDefaultConfig() {
+    return _osrfConfDefault != NULL;
+}
+
+osrfConf* osrfConfDefault() {
+    return _osrfConfDefault;
 }
 
 

@@ -19,6 +19,7 @@
 int main( int argc, char* argv[] ) {
 
     char* host    = NULL;
+	char* domain  = NULL;
     char* config  = NULL;
     char* context = NULL;
     char* piddir  = NULL;
@@ -30,10 +31,13 @@ int main( int argc, char* argv[] ) {
      * set_proc_title are evil and overwrite the argv memory */
 
     int c;
-    while ((c = getopt(argc, argv, "h:c:x:p:a:s:")) != -1) {
+    while ((c = getopt(argc, argv, "h:d:c:x:p:a:s:")) != -1) {
         switch (c) {
             case 'h':
                 host = strdup(optarg);
+                break;
+            case 'd':
+                domain = strdup(optarg);
                 break;
             case 'c':
                 config = strdup(optarg);
@@ -56,7 +60,7 @@ int main( int argc, char* argv[] ) {
     }
 
 
-    if (!(host && config && context && piddir && action)) {
+    if (!(host && domain && config && context && piddir && action)) {
 		fprintf(stderr, "Usage: %s -h <host> -c <config> "
             "-x <config_context> -p <piddir>\n", argv[0]);
 		return 1;
@@ -72,7 +76,7 @@ int main( int argc, char* argv[] ) {
     }
 
     int ret = osrf_system_service_ctrl(
-        host, config, context, piddir, action, service);
+        host, domain, config, context, piddir, action, service);
 
 	if (ret != 0) {
 		osrfLogError(

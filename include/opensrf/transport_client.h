@@ -28,7 +28,7 @@ struct message_list_struct;
 	a Jabber ID for outgoing messages.
 */
 struct transport_client_struct {
-    char* primary_domain;
+    char* primary_node_name;
     char* service; // NULL if this is a standalone client.
     char* service_address; // NULL if this is a standalone client.
     osrfHash* connections;

@@ -1,5 +1,21 @@
 # vim:et:ts=2:sw=2:sts=2:ft=yaml
 
+# Optionally tell any clients using this config what their 
+# primary domain is.  Generally, this can also be specified
+# via command line parameter.
+
+# Optionally specify our domain and hostname.  OpenSRF clients and
+# applications should provide ways to override these values via 
+# command line, etc.
+#
+# 'domain' is the name of a bus domain (see 'domains' below)
+#
+# 'hostname' is the value passed to opensrf.settings when retrieving
+# per-host service settings.
+#
+domain: localhost
+hostname: localhost
+
 # Credentials used for logging in to the message bus.
 #
 # With security enforced by the router, there may be no need for 
