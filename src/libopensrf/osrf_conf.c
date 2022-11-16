@@ -3,14 +3,19 @@
 static osrfConf* _osrfConfDefault = NULL;
 static int setHostInfo(osrfConf*);
 static int addServiceGroups(osrfConf*);
+static int addCredentials(osrfConf*);
+static int addDomains(osrfConf*);
+static osrfBusNode* extractBusNode(osrfConf*, struct fy_node* node, char* name);
+static int addLogDefaults(osrfConf*);
 static int addConnectionTypes(osrfConf*);
+static char* getString(struct fy_node*, const char* path);
 
 osrfConf* osrfConfInit(const char* filename, const char* connection_type) {
 
     struct fy_document *fyd = fy_document_build_from_file(NULL, filename);
 
     if (fyd == NULL) {
-        fprintf(stderr, "Cannot load/parse YAML file: %s", filename);
+        fprintf(stderr, "Cannot load/parse yaml file: %s", filename);
         return NULL;
     }
 
@@ -27,9 +32,15 @@ osrfConf* osrfConfInit(const char* filename, const char* connection_type) {
     conf->primary_connection = NULL;
     conf->source = fyd;
 
-    if (!setHostInfo(conf)) { return NULL; }
-    if (!addServiceGroups(conf)) { return NULL; }
-    if (!addConnectionTypes(conf)) { return NULL; }
+    if (!setHostInfo(conf)      ||
+        !addServiceGroups(conf) ||
+        !addLogDefaults(conf)   ||
+        !addDomains(conf)       ||
+        !addConnectionTypes(conf)) {
+
+        fprintf(stderr, "Cannot build config");
+        return NULL;
+    }
 
     _osrfConfDefault = conf;
 
@@ -37,22 +48,101 @@ osrfConf* osrfConfInit(const char* filename, const char* connection_type) {
 }
 
 
+static char* getString(struct fy_node* node, const char* path) {
+    char buf[1024 + 1];
+    int count = fy_node_scanf(node, "%s %1024s", buf, path);
+
+    if (count == 0) {
+        fprintf(stderr, "Invalid username");
+        return NULL;
+    }
+
+    return strdup(buf);
+}
+
+
+static int addDomains(osrfConf* conf) {
+
+    struct fy_node *node = fy_document_root(conf->source);
+    struct fy_node *domain_list = fy_node_by_path(node, "domains", -1, 0);
+
+    if (domain_list == NULL || !fy_node_is_sequence(domain_list)) {
+        fprintf(stderr, "Invalid 'domains' setting");
+        return 0;
+    }
+
+    void *iter = NULL;
+    struct fy_node *domain_entry = NULL;
+
+    while ((domain_entry = fy_node_sequence_iterate(domain_list, &iter)) != NULL) {
+        osrfBusDomain* domain = (osrfBusDomain*) safe_malloc(sizeof(osrfBusDomain));
+        domain->name = getString(domain_entry, "/name");
+        domain->private_node = extractBusNode(conf, domain_entry, "private_node");
+        domain->public_node = extractBusNode(conf, domain_entry, "public_node");
+
+        if (domain->private_node == NULL || domain->public_node) {
+            fprintf(stderr, "Cannot configure public/private nodes");
+            return 0;
+        }
+
+        osrfListPush(conf->domains, domain);
+    }
+
+    return 1;
+}
+
+static osrfBusNode* extractBusNode(osrfConf* conf, struct fy_node* node, char* name) {
+    struct fy_node* fy_bus_node = fy_node_by_path(node, name, -1, 0);
+    osrfBusNode* bus_node = (osrfBusNode*) safe_malloc(sizeof(osrfBusNode));
+
+    bus_node->name = getString(fy_bus_node, "/name");
+    char* port_str = getString(fy_bus_node, "/port");
+    char* svcgname = getString(fy_bus_node, "/allowed_services");
+
+    if (bus_node->name == NULL || port_str == NULL) {
+        fprintf(stderr, "Invalid bus node");
+        return NULL;
+    }
+
+    bus_node->port = atoi(port_str);
+    free(port_str);
+
+    if (svcgname == NULL) { // Optional
+        return bus_node;
+    }
+
+    osrfStringArray* services = 
+        (osrfStringArray*) osrfHashGet(conf->service_groups, svcgname);
+
+    if (services == NULL) {
+        fprintf(stderr, "Invalid service group name %s", svcgname);
+        free(svcgname);
+        return NULL;
+    }
+
+    bus_node->allowed_services = services;
+    free(svcgname);
+    return bus_node;
+ }
+
+static int addLogDefaults(osrfConf* conf) {
+    // TODO
+    return 1;
+}
+
+
 // This does not guarantee values will be set, since the caller
 // has the option to manually apply values after we have init'ed.
 static int setHostInfo(osrfConf* conf) {
+    struct fy_node *node = fy_document_root(conf->source);
 
-    char text[256 + 1];
-    int count = fy_document_scanf(conf->source, "/hostname %256s", text);
-    if (count > 0) {
-        conf->hostname = strdup(text);
-    } else {
+    conf->hostname = getString(node, "/hostname");
+    if (conf->hostname == NULL) {
         conf->hostname = getHostName();
     }
 
-    count = fy_document_scanf(conf->source, "/domain %256s", text);
-    if (count > 0) {
-        conf->domain = strdup(text);
-    } else {
+    conf->domain = getString(node, "/domain");
+    if (conf->domain == NULL) {
         conf->domain = getDomainName();
     }
 
@@ -85,7 +175,7 @@ void osrfConfSetDomainName(osrfConf* conf, const char* name) {
     conf->domain = strdup(name);
 }
 
-static int addConnectionTypess(osrfConf* conf) {
+static int addConnectionTypes(osrfConf* conf) {
 
     struct fy_node *node = fy_document_root(conf->source);
     struct fy_node *connections = fy_node_by_path(node, "connections", -1, 0);
@@ -99,7 +189,7 @@ static int addConnectionTypess(osrfConf* conf) {
     struct fy_node_pair *node_pair = NULL;
 
     while ((node_pair = fy_node_mapping_iterate(connections, &iter)) != NULL) {
-        const char* key = fy_node_get_scalar0(fy_node_pair_key(node_pair));
+        const char* name = fy_node_get_scalar0(fy_node_pair_key(node_pair));
         struct fy_node* value = fy_node_pair_value(node_pair);
 
         if (!fy_node_is_mapping(value)) {
@@ -107,8 +197,63 @@ static int addConnectionTypess(osrfConf* conf) {
             return 0;
         }
 
-        // TODO 
+        osrfBusConnectionType* contype = 
+            (osrfBusConnectionType*) safe_malloc(sizeof(osrfBusConnectionType));
+
+        const char* node_type = getString(value, "/node_type");
+        const char* credentials = getString(value, "/credentials");
+
+        contype->node_type = (node_type == NULL || strcmp(node_type, "public")) ?
+            Public : Private;
+
+        osrfBusCredentials* creds = osrfHashGet(conf->credentials, credentials);
+        if (creds == NULL) {
+            fprintf(stderr, "Invalid credentials: %s", credentials);
+            return 0;
+        }
+
+        contype->credentials = creds;
+
+        // TODO logging
+        //osrfLogOptions* logging;
+
+        osrfHashSet(conf->connection_types, contype, name);
     }
+
+    return 1;
+}
+
+static int addCredentials(osrfConf* conf) {
+    struct fy_node *node = fy_document_root(conf->source);
+    struct fy_node *creds = fy_node_by_path(node, "credentials", -1, 0);
+
+    if (creds == NULL || !fy_node_is_mapping(creds)) {
+        fprintf(stderr, "Invalid 'credentials' setting");
+        return 0;
+    }
+
+    void *iter = NULL;
+    struct fy_node_pair *node_pair = NULL;
+
+    while ((node_pair = fy_node_mapping_iterate(creds, &iter)) != NULL) {
+        const char* key = fy_node_get_scalar0(fy_node_pair_key(node_pair));
+        struct fy_node* value = fy_node_pair_value(node_pair);
+
+        osrfBusCredentials* credentials = 
+            (osrfBusCredentials*) safe_malloc(sizeof(osrfBusCredentials));
+
+        credentials->username = getString(value, "/username");
+        credentials->password = getString(value, "/password");
+
+        if (credentials->username == NULL || credentials->password  == NULL) {
+            fprintf(stderr, "Invalid credentials for %s", key);
+            return 0;
+        }
+
+        osrfHashSet(conf->credentials, credentials, key);
+    }
+
+    return 1;
 }
 
 static int addServiceGroups(osrfConf* conf) {
