@@ -183,16 +183,11 @@ int osrf_prefork_run( const char* appname ) {
 	free( max_backlog_queue );
 	/* --------------------------------------------------- */
 
-	char* resc = va_list_to_string( "%s_listener", appname );
-
 	// Make sure that we haven't already booted
-	if( !osrfSystemBootstrapClientResc( NULL, NULL, resc )) {
+    if (!osrf_system_bootstrap_common(NULL, "service", appname, 1)) {
 		osrfLogError( OSRF_LOG_MARK, "Unable to bootstrap client for osrf_prefork_run()" );
-		free( resc );
 		return -1;
 	}
-
-	free( resc );
 
 	prefork_simple forker;
 
@@ -247,20 +242,20 @@ static void osrf_prefork_send_router_registration(
 	transport_client* client = osrfSystemGetTransportClient();
 
 	// Construct the Jabber address of the router
-	char* jid = va_list_to_string( "%s@%s/router", routerName, routerDomain );
+	char* jid = va_list_to_string( "opensrf:router:%s", routerDomain );
 
 	// Create the registration message, and send it
 	transport_message* msg;
     if (unregister) {
 
 	    osrfLogInfo( OSRF_LOG_MARK, "%s un-registering with router %s", appname, jid );
-	    msg = message_init( "unregistering", NULL, NULL, jid, NULL );
+	    msg = message_init( "\"unregistering\"", NULL, NULL, jid, NULL );
 	    message_set_router_info( msg, NULL, NULL, appname, "unregister", 0 );
 
     } else {
 
 	    osrfLogInfo( OSRF_LOG_MARK, "%s registering with router %s", appname, jid );
-	    msg = message_init( "registering", NULL, NULL, jid, NULL );
+	    msg = message_init( "\"registering\"", NULL, NULL, jid, NULL );
 	    message_set_router_info( msg, NULL, NULL, appname, "register", 0 );
     }
 
@@ -372,7 +367,6 @@ static int prefork_child_init_hook( prefork_child* child ) {
 
 	// Connect to cache server(s).
 	osrfSystemInitCache();
-	char* resc = va_list_to_string( "%s_drone", child->appname );
 
 	// If we're a source-client, tell the logger now that we're a new process.
 	char* isclient = osrfConfigGetValue( NULL, "/client" );
@@ -384,14 +378,11 @@ static int prefork_child_init_hook( prefork_child* child ) {
     // TODO: not necessary if parent disconnects first
 	osrfSystemIgnoreTransportClient();
 
-	// Connect to Jabber
-	if( !osrfSystemBootstrapClientResc( NULL, NULL, resc )) {
+	// Connect to the message bus
+    if (!osrf_system_bootstrap_common(NULL, "service", child->appname, 0)) {
 		osrfLogError( OSRF_LOG_MARK, "Unable to bootstrap client for osrf_prefork_run()" );
-		free( resc );
 		return -1;
 	}
-
-	free( resc );
 
 	// Dynamically call the application-specific initialization function
 	// from a previously loaded shared library.
@@ -421,11 +412,13 @@ static int prefork_child_process_request( prefork_child* child, char* data ) {
 
 	transport_client* client = osrfSystemGetTransportClient();
 
+    osrfLogInfo(OSRF_LOG_MARK, "we have a client = %s", client);
+
 	// Make sure that we're still connected to Jabber; reconnect if necessary.
 	if( !client_connected( client )) {
 		osrfSystemIgnoreTransportClient();
 		osrfLogWarning( OSRF_LOG_MARK, "Reconnecting child to opensrf after disconnect..." );
-		if( !osrf_system_bootstrap_client( NULL, NULL )) {
+        if (!osrf_system_bootstrap_common(NULL, "service", child->appname, 0)) {
 			osrfLogError( OSRF_LOG_MARK,
 				"Unable to bootstrap client in prefork_child_process_request()" );
 			sleep( 1 );
@@ -433,8 +426,8 @@ static int prefork_child_process_request( prefork_child* child, char* data ) {
 		}
 	}
 
-	// Construct the message from the xml.
-	transport_message* msg = new_message_from_xml( data );
+	// Construct the message from the json
+	transport_message* msg = new_message_from_json( data );
 
 	// Respond to the transport message.  This is where method calls are buried.
 	osrfAppSession* session = osrf_stack_transport_handler( msg, child->appname );
@@ -882,14 +875,14 @@ static void prefork_run( prefork_simple* forker ) {
 		if ( backlog_queue_size == 0 ) {
 			// Wait indefinitely for an input message
 			osrfLogDebug( OSRF_LOG_MARK, "Forker going into wait for data..." );
-			cur_msg = client_recv( forker->connection, -1 );
+            cur_msg = client_recv_for_service(forker->connection, -1);
 			received_from_network = 1;
 		} else {
 			// We have queued messages, which means all of our drones
 			// are occupied.  See if any new messages are available on the
 			// network while waiting up to 1 second to allow time for a drone
 			// to become available to handle the next request in the queue.
-			cur_msg = client_recv( forker->connection, 1 );
+            cur_msg = client_recv_for_service(forker->connection, -1);
 			if ( cur_msg != NULL )
 				received_from_network = 1;
 		}
@@ -912,8 +905,8 @@ static void prefork_run( prefork_simple* forker ) {
 				continue;
 			}
 
-			message_prepare_xml( cur_msg );
-			const char* msg_data = cur_msg->msg_xml;
+			message_prepare_json(cur_msg);
+			const char* msg_data = cur_msg->msg_json;
 			if( ! msg_data || ! *msg_data ) {
 				osrfLogWarning( OSRF_LOG_MARK, "Received % message from %s, thread %",
 					(msg_data ? "empty" : "NULL"), cur_msg->sender, cur_msg->thread );
@@ -1001,7 +994,7 @@ static void prefork_run( prefork_simple* forker ) {
 				osrfLogInternal( OSRF_LOG_MARK, "Writing to child fd %d",
 					cur_child->write_data_fd );
 
-				const char* msg_data = cur_msg->msg_xml;
+				const char* msg_data = cur_msg->msg_json;
 				int written = write( cur_child->write_data_fd, msg_data, strlen( msg_data ) + 1 );
 				if( written < 0 ) {
 					// This child appears to be dead or unusable.  Discard it.
@@ -1036,7 +1029,7 @@ static void prefork_run( prefork_simple* forker ) {
 						osrfLogDebug( OSRF_LOG_MARK, "Writing to new child fd %d : pid %d",
 							new_child->write_data_fd, new_child->pid );
 
-						const char* msg_data = cur_msg->msg_xml;
+						const char* msg_data = cur_msg->msg_json;
 						int written = write(
 							new_child->write_data_fd, msg_data, strlen( msg_data ) + 1 );
 						if( written < 0 ) {

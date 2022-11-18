@@ -387,6 +387,19 @@ int message_prepare_json(transport_message* msg) {
     jsonObjectSetKey(json_hash, "thread", jsonNewObject(msg->thread));
     jsonObjectSetKey(json_hash, "osrf_xid", jsonNewObject(msg->osrf_xid));
 
+    if (msg->router_from) {
+        jsonObjectSetKey(json_hash, "router_from", jsonNewObject(msg->router_from));
+    }
+    if (msg->router_to) {
+        jsonObjectSetKey(json_hash, "router_to", jsonNewObject(msg->router_to));
+    }
+    if (msg->router_class) {
+        jsonObjectSetKey(json_hash, "router_class", jsonNewObject(msg->router_class));
+    }
+    if (msg->router_command) {
+        jsonObjectSetKey(json_hash, "router_command", jsonNewObject(msg->router_command));
+    }
+
     // TODO the various layers expect the message body to be a separate
     // JSON string, but on the bus, the body is just another key 
     // in the JSON object.
