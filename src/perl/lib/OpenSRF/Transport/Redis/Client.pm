@@ -164,18 +164,19 @@ sub create_service_stream {
     }
 }
 
-sub send {
-    my $self = shift;
-    my $msg = OpenSRF::Transport::Redis::Message->new(@_);
-    
+# Send a message to $recipient regardless of what's in the 'to'
+# field of the message.
+sub send_to {
+    my ($self, $recipient, @msg_parts) = @_;
+
+    my $msg = OpenSRF::Transport::Redis::Message->new(@msg_parts);
+
     $msg->body(OpenSRF::Utils::JSON->JSON2perl($msg->body));
 
     $msg->osrf_xid($logger->get_osrf_xid);
     $msg->from($self->primary_connection->address);
 
     my $msg_json = $msg->to_json;
-
-    my $recipient = $msg->to;
     my $con = $self->primary_connection;
 
     if ($recipient =~ /^opensrf:client/o) {
@@ -195,6 +196,12 @@ sub send {
     $logger->internal("send(): recipient=$recipient : $msg_json");
 
     $con->send($recipient, $msg_json);
+}
+
+sub send {
+    my $self = shift;
+    my %msg_parts = @_;
+    return $self->send_to($msg_parts{to}, %msg_parts);
 }
 
 sub process {
