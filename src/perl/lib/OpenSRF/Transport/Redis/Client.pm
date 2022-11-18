@@ -129,6 +129,8 @@ sub disconnect {
         $con->disconnect($self->primary_domain eq $domain);
         delete $connections{$domain};
     }
+
+    $_singleton = undef;
 }
 
 sub connected {

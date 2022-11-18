@@ -168,7 +168,7 @@ sub run {
 
         # no pending message, so wait for the next one forever
         $from_network = $wait_time = -1 if (!$msg);
-        $msg ||= $self->{osrf_handle}->process($wait_time);
+        $msg ||= $self->{osrf_handle}->process($wait_time, $self->{service});
 
         !$from_network and $chatty and $logger->debug("server: attempting to process previously queued message");
         $from_network and $chatty and $logger->internal("server: no queued messages, processing due to network or signal");
@@ -221,7 +221,7 @@ sub run {
                         # but couldn't process it... but also hadn't fetched any
                         # additional messages from the network. Doing so now,
                         # as otherwise only one message will ever get queued
-                        $msg = $self->{osrf_handle}->process($wait_time);
+                        $msg = $self->{osrf_handle}->process($wait_time, $self->{service});
                         if ($msg) {
                             $chatty and $logger->debug("server: queuing new message after a re-queue");
                             push @max_children_msg_queue, $msg;
@@ -234,7 +234,7 @@ sub run {
                         # now see if there is a request available from the network;
                         # if so, we'll see if a child is available again or else
                         # drop it
-                        $msg = $self->{osrf_handle}->process($wait_time);
+                        $msg = $self->{osrf_handle}->process($wait_time, $self->{service});
                         if ($msg) {
                             $self->check_status();
                             if (@{$self->{idle_list}}) {
@@ -340,11 +340,8 @@ sub kill_child {
 # ----------------------------------------------------------------
 sub build_osrf_handle {
     my $self = shift;
-
     $self->{osrf_handle} =
         OpenSRF::Transport::Redis::Client->new($self->{service});
-
-    $self->{osrf_handle}->initialize;
 }
 
 

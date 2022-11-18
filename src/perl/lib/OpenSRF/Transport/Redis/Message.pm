@@ -105,7 +105,7 @@ sub to_json {
     # Some values are optional.
     # Avoid cluttering the JSON with undef values.
     for my $key (qw/osrf_xid router_command router_class router_reply/) {
-        $hash->{$key} = $self->{$key} if defined $self->{$key};
+        $hash->{$key} = $self->{$key} if defined $self->{$key} && $self->{$key} ne '';
     }
 
     return OpenSRF::Utils::JSON->perl2JSON($hash);
