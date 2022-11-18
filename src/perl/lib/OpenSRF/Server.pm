@@ -82,6 +82,7 @@ sub cleanup {
                 @{$self->{active_list}}." active children...");
 
             # block until a child is becomes available
+            $logger->info("waiting for child procs to clear in graceful shutdown");
             $self->check_status(1);
         }
         $logger->info("server: all clear for graceful shutdown");
@@ -553,6 +554,7 @@ sub unregister_routers {
             router_command => "unregister",
             router_class => $self->{service}
         );
+        $logger->info("Disconnect sent to $router");
     }
 }
 
@@ -602,7 +604,7 @@ sub init {
     my $self = shift;
     my $service = $self->{parent}->{service};
     $0 = "OpenSRF Drone [$service]";
-    OpenSRF::Transport::PeerHandle->construct($service);
+    OpenSRF::Transport::PeerHandle->construct($service, 1);
     OpenSRF::Application->application_implementation->child_init
         if (OpenSRF::Application->application_implementation->can('child_init'));
 }
