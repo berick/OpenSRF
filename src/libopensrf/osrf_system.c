@@ -452,7 +452,8 @@ int osrfSystemBootstrapClientResc( const char* config_file,
 
 	osrfLogInfo( OSRF_LOG_MARK, "Bootstrapping system with domain %s, port %d, and unixpath %s",
 		domain, iport, unixpath ? unixpath : "(none)" );
-	transport_client* client = client_init( domain, iport, unixpath, 0 );
+
+	transport_client* client = client_init(domain, iport, username, password);
 
 	char host[HOST_NAME_MAX + 1] = "";
 	gethostname(host, sizeof(host) );
@@ -469,7 +470,7 @@ int osrfSystemBootstrapClientResc( const char* config_file,
 	buf[0] = '\0';
 	snprintf(buf, len - 1, "%s_%s_%s_%ld", resource, host, tbuf, (long) getpid() );
 
-	if(client_connect( client, username, password, buf, 10, AUTH_DIGEST )) {
+	if(client_connect(client)) {
 		osrfGlobalTransportClient = client;
 	}
 
