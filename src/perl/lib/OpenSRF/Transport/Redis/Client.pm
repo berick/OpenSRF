@@ -223,11 +223,7 @@ sub process {
         die "Exiting on lack of primary bus connection";
     }
 
-    my $val = $self->recv($timeout, $for_service);
-
-    return 0 unless $val;
-
-    return OpenSRF::Transport->handler($self->service || 'client', $val);
+    return $self->recv($timeout, $for_service);
 }
 
 # $timeout=0 means check for data without blocking
