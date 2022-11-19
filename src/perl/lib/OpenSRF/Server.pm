@@ -212,11 +212,10 @@ sub run {
                 # un-registering with routers, which requires the Redis
                 # client to wait for an ACK from the Redis server.
                 # However, it will never receive the ack because our
-                # client is already hunkered down on an BLPOP call
-                # wiating for a response.  An alternate approach to
-                # using signals is an out-of-band service-level channel
-                # for sending commands directly to listeners.
-                #
+                # client is already blocking on an BLPOP call wiating
+                # for a new request.  In future, we could replace
+                # signals with messages sent directly to listeners
+                # telling them to shutdown.
                 $wait_time = 3 if 
                     !$self->perform_idle_maintenance and # no maintenance performed this time
                     @{$self->{active_list}} == 0; # no active children 
