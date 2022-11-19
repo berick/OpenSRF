@@ -871,18 +871,20 @@ static void prefork_run( prefork_simple* forker ) {
 			return;
 		}
 
+        // NOTE: avoid indefinite waiting in our recv calls.  
+        // See Perl bits for more info.
 		int received_from_network = 0;
 		if ( backlog_queue_size == 0 ) {
 			// Wait indefinitely for an input message
 			osrfLogDebug( OSRF_LOG_MARK, "Forker going into wait for data..." );
-            cur_msg = client_recv_for_service(forker->connection, -1);
+            cur_msg = client_recv_for_service(forker->connection, 1);
 			received_from_network = 1;
 		} else {
 			// We have queued messages, which means all of our drones
 			// are occupied.  See if any new messages are available on the
 			// network while waiting up to 1 second to allow time for a drone
 			// to become available to handle the next request in the queue.
-            cur_msg = client_recv_for_service(forker->connection, -1);
+            cur_msg = client_recv_for_service(forker->connection, 1);
 			if ( cur_msg != NULL )
 				received_from_network = 1;
 		}
