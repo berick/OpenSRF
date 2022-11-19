@@ -150,13 +150,15 @@ int client_send_message_to(transport_client* client, transport_message* msg, con
 
 	if (client == NULL || client->error) { return -1; }
 
+    const char* receiver = recipient == NULL ? msg->recipient : recipient;
+
     transport_con* con;
 
-    if (strstr(recipient, "opensrf:client")) {
+    if (strstr(receiver, "opensrf:client")) {
         // We may be talking to a worker that runs on a remote domain.
         // Find or create a connection to the domain.
 
-        char* domain = get_domain_from_address(recipient);
+        char* domain = get_domain_from_address(receiver);
 
         if (!domain) { return -1; }
 
@@ -179,9 +181,9 @@ int client_send_message_to(transport_client* client, transport_message* msg, con
     message_prepare_json(msg);
 
     osrfLogInternal(OSRF_LOG_MARK, 
-        "client_send_message() to=%s %s", recipient, msg->msg_json);
+        "client_send_message() to=%s %s", receiver, msg->msg_json);
 
-    return transport_con_send(con, msg->msg_json, recipient);
+    return transport_con_send(con, msg->msg_json, receiver);
 }
 
 transport_message* client_recv_stream(transport_client* client, int timeout, const char* stream) {
