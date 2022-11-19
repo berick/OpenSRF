@@ -105,14 +105,9 @@ sub send {
     
     $logger->internal("send(): to=$dest_stream : $msg_json");
 
-    #eval { $self->redis->rpush($dest_stream, $msg_json) };
-    $logger->info("HERE BEFORE RPUSH: dest=$dest_stream");
-    $self->redis->rpush($dest_stream, $msg_json);
-    $logger->info("HERE AFTER RPUSH: dest=$dest_stream");
+    eval { $self->redis->rpush($dest_stream, $msg_json) };
 
     if ($@) { $logger->error("RPUSH error: $@"); }
-
-    $logger->internal("send() rpush done");
 }
 
 # $timeout=0 means check for data without blocking

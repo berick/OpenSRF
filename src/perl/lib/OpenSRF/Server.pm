@@ -156,7 +156,7 @@ sub run {
     my $wait_time = 1;
 
     # main server loop
-    while(1) {
+    while (1) {
 
         $self->check_status;
         $self->{child_died} = 0;
@@ -204,7 +204,20 @@ sub run {
 
                 # when we hit equilibrium, there's no need for regular
                 # maintenance, so set wait_time to 'forever'
-                $wait_time = -1 if 
+                #
+                # Avoid indefinite waiting here -- Redis client
+                # gracefully handles interrupts and immediately goes
+                # back to listening after the signal handler is
+                # complete.  In our case, the signal handler may include
+                # un-registering with routers, which requires the Redis
+                # client to wait for an ACK from the Redis server.
+                # However, it will never receive the ack because our
+                # client is already hunkered down on an BLPOP call
+                # wiating for a response.  An alternate approach to
+                # using signals is an out-of-band service-level channel
+                # for sending commands directly to listeners.
+                #
+                $wait_time = 3 if 
                     !$self->perform_idle_maintenance and # no maintenance performed this time
                     @{$self->{active_list}} == 0; # no active children 
             }
