@@ -541,7 +541,7 @@ sub register_routers {
         $logger->info("server: registering with router $_");
         $self->{osrf_handle}->send(
             to => $_,
-            body => '[]',
+            body => '"[]"',
             router_command => 'register',
             router_class => $self->{service}
         );
@@ -562,7 +562,7 @@ sub unregister_routers {
         $logger->info("server: disconnecting from router $router");
         $self->{osrf_handle}->send(
             to => $router,
-            body => '[]',
+            body => '"[]"',
             router_command => "unregister",
             router_class => $self->{service}
         );

@@ -249,13 +249,13 @@ static void osrf_prefork_send_router_registration(
     if (unregister) {
 
 	    osrfLogInfo( OSRF_LOG_MARK, "%s un-registering with router %s", appname, jid );
-	    msg = message_init( "[]", NULL, NULL, jid, NULL );
+	    msg = message_init( "\"[]\"", NULL, NULL, jid, NULL );
 	    message_set_router_info( msg, NULL, NULL, appname, "unregister", 0 );
 
     } else {
 
 	    osrfLogInfo( OSRF_LOG_MARK, "%s registering with router %s", appname, jid );
-	    msg = message_init( "[]", NULL, NULL, jid, NULL );
+	    msg = message_init( "\"[]\"", NULL, NULL, jid, NULL );
 	    message_set_router_info( msg, NULL, NULL, appname, "register", 0 );
     }
 
