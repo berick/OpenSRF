@@ -412,8 +412,6 @@ static int prefork_child_process_request( prefork_child* child, char* data ) {
 
 	transport_client* client = osrfSystemGetTransportClient();
 
-    osrfLogInfo(OSRF_LOG_MARK, "we have a client = %s", client);
-
 	// Make sure that we're still connected to Jabber; reconnect if necessary.
 	if( !client_connected( client )) {
 		osrfSystemIgnoreTransportClient();
