@@ -175,8 +175,10 @@ int client_send_message_to(transport_client* client, transport_message* msg, con
         con = client->primary_connection;
     }
         
+    // The message sender is always our primary connection address,
+    // since that's the only address we listen for inbound data on.
 	if (msg->sender) { free(msg->sender); }
-	msg->sender = strdup(con->address);
+	msg->sender = strdup(client->primary_connection->address);
 
     message_prepare_json(msg);
 
