@@ -876,7 +876,7 @@ static void prefork_run( prefork_simple* forker ) {
 		int received_from_network = 0;
 		if ( backlog_queue_size == 0 ) {
 			// Wait indefinitely for an input message
-			osrfLogDebug( OSRF_LOG_MARK, "Forker going into wait for data..." );
+			osrfLogInternal(OSRF_LOG_MARK, "Forker going into wait for data..." );
             cur_msg = client_recv_for_service(forker->connection, 1);
 			received_from_network = 1;
 		} else {
