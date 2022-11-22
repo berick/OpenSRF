@@ -3,6 +3,7 @@ SET comment "opensrf clients can perform all opensrf-level actions"
 SET COMMENT "opensrf accounts send requets to opensrf:router:* queues"
 SET COMMENT "opensrf accounts send replies to opensrf:client:* queues"
 SET COMMENT "opensrf accounts lpop requests from their opensrf:servivce: queue."
+SET COMMENT "TODO: separate Listener vs Drone accounts to prevent Drones / standalone clients from accessing opensrf:service:*"
                                                                                
 ACL SETUSER opensrf reset                                                      
 ACL SETUSER opensrf on >password                                               
