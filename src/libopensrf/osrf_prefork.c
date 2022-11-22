@@ -850,7 +850,7 @@ static void prefork_run( prefork_simple* forker ) {
 
 		// Wait indefinitely for an input message
 		osrfLogDebug( OSRF_LOG_MARK, "Forker going into wait for data..." );
-		cur_msg = client_recv( forker->connection, -1 );
+		cur_msg = client_recv( forker->connection, 5 );
 
 		if( cur_msg == NULL ) {
 			// most likely a signal was received.  clean up any recently
